@@ -2,7 +2,7 @@
 
 Plateforme d'investigation des relations entre comptes et dépôts **publics** GitHub. Un compte ou un dépôt sert de point de départ ; chaque scan conserve ses observations, ses preuves et sa couverture. Le corpus est mutualisé, avec des droits par investigation.
 
-**Version 0.2, destinée à un pilote.** Le backend (API, worker, migrations, CLI) est écrit en **Rust** ; l'interface en React/TypeScript. Tous les services tournent dans des images **Alpine**, sans root, avec un système de fichiers en lecture seule. PostgreSQL est la source de vérité. Le nom Observatory est provisoire.
+**Version 0.3, destinée à un pilote.** Le backend (API, worker, migrations, CLI) est écrit en **Rust** ; l'interface en React/TypeScript. Tous les services tournent dans des images **Alpine**, sans root, avec un système de fichiers en lecture seule. PostgreSQL est la source de vérité. Le nom Observatory est provisoire.
 
 ## Démarrer sous Linux
 

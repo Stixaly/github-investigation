@@ -4,6 +4,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 
 ## [Non publié]
 
+## [0.3.0] — 2026-10-12
+
+Collecte plus économe et plus rapide, pivots à l'échelle du dossier. La montée depuis la 0.1 ou la 0.2 applique les migrations manquantes (0002 à 0004) ; répétée sur une copie restaurée de la base pilote, sans changement des données observées.
+
 ### Ajouté
 
 - Collecte économe en quota GitHub, migration 0003 ([ADR 0005](docs/adr/0005-collecte-econome.md)) :
