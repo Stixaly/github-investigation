@@ -69,4 +69,52 @@ describe('Inspector', () => {
     await userEvent.click(screen.getByRole('button', { name: /Consulter la preuve/ }));
     expect(actions.onShowProof).toHaveBeenCalledWith(edge);
   });
+
+  it('collects the relations of an entity and compares its neighbours with a retained one', async () => {
+    const actions = {
+      ...handlers(),
+      onCollect: vi.fn(),
+      onPin: vi.fn(),
+      onCommon: vi.fn(),
+      onSelectEntity: vi.fn(),
+    };
+    const account: Node = { ...node, id: 'n2', kind: 'Account', label: 'demo-alice', provisional: false };
+    const { rerender } = render(<Inspector selected={account} proof={null} overlaps={[]} {...actions} />);
+    await userEvent.click(screen.getByRole('button', { name: /Collecter ses relations/ }));
+    expect(actions.onCollect).toHaveBeenCalledWith(account);
+    await userEvent.click(screen.getByRole('button', { name: 'Retenir pour comparer' }));
+    expect(actions.onPin).toHaveBeenCalledWith(account);
+    rerender(<Inspector selected={account} proof={null} overlaps={[]} pinned={account} {...actions} />);
+    expect(screen.getByText(/Entité retenue/)).toBeInTheDocument();
+    rerender(
+      <Inspector
+        selected={node}
+        proof={null}
+        overlaps={[]}
+        pinned={account}
+        common={{
+          a: 'n2',
+          b: 'n1',
+          common: [
+            {
+              id: 'r1',
+              kind: 'Repository',
+              label: 'demo-lab/observatory',
+              with_a: ['CONTRIBUTED_TO'],
+              with_b: ['OWNS'],
+            },
+          ],
+          notice: 'Un voisin commun n’établit pas un lien.',
+        }}
+        {...actions}
+      />,
+    );
+    // A provisional historical identity cannot seed a new scan.
+    expect(screen.queryByRole('button', { name: /Collecter ses relations/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Voisins communs avec demo-alice' }));
+    expect(actions.onCommon).toHaveBeenCalledWith(node);
+    expect(screen.getByRole('heading', { name: '1 voisin commun' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /demo-lab\/observatory/ }));
+    expect(actions.onSelectEntity).toHaveBeenCalledWith('r1');
+  });
 });
