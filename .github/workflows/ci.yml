@@ -1,30 +1,164 @@
-name: Alpine platform
-on: [push, pull_request]
+name: CI
+
+# Every deterministic check blocks the merge (same rule as CTIParsor ADR-0071).
+# Actions are pinned by commit SHA; the token is read-only.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 5 * * 1" # weekly: new advisories against the shipped versions
+
 permissions:
   contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
 jobs:
-  validate:
+  rust:
+    name: Rust (fmt, clippy, tests with PostgreSQL, coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env:
+          POSTGRES_PASSWORD: ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain (rust-toolchain.toml) and coverage tools
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked --version 0.9.1
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (pedantic, warnings are errors)
+        run: cargo clippy --all-targets --locked -- -D warnings
+      # REQUIRE_DB_TESTS turns a skipped database test into a failure. The line
+      # coverage floor sits just under the 88.6 % measured for 0.2: raise it as tests land.
+      - name: Tests and line coverage (floor in the command)
+        env:
+          TEST_DATABASE_URL: postgres://postgres:ci-only@127.0.0.1:5432/postgres
+          REQUIRE_DB_TESTS: "1"
+        run: cargo llvm-cov --locked --workspace --fail-under-lines 87 --summary-only
+
+  migration-from-base:
+    name: Upgrade a database written by the base commit
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env:
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: investigation
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The SHA reaches the script through the environment, never the command text.
+      - name: Migrate, then read back, a database the base commit created
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DB_HOST: 127.0.0.1
+          DB_PASSWORD: ci-only
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          sh scripts/check-migration-from-base.sh "$BASE_SHA"
+
+  frontend:
+    name: Frontend (format, lint, types, tests, build, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - run: npm run build
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  supply-chain:
+    name: Rust advisories, licences and sources (cargo-deny)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo install cargo-deny --locked --version 0.20.2
+      - run: cargo deny --locked check
+
+  dependency-review:
+    name: Dependency review (what this PR adds)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+
+  containers:
+    name: Alpine images, smoke test and browser journey
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Prepare isolated credentials
         run: sh scripts/setup.sh
-      - name: Build and run PostgreSQL integration tests, Ruff and TypeScript checks
-        run: make test
-      - name: Start runtime
+      - name: Build and start the stack
         run: docker compose up --build -d --wait
       - name: Smoke
         run: |
-          curl --fail http://localhost:8088/ready
-          curl --fail http://localhost:8088/ > /dev/null
+          curl --fail --silent http://localhost:8088/ready
+          curl --fail --silent http://localhost:8088/ > /dev/null
+          curl --silent --include http://localhost:8088/health | grep -i '^content-security-policy:'
           docker compose exec -T api sh -c 'test "$(id -u)" = 10001 && test -f /etc/alpine-release'
           docker compose exec -T postgres sh -c 'test "$(id -u)" != 0 && test -f /etc/alpine-release'
+          docker compose run --rm migrate migrate --check
+      - name: Demo account and browser journey (Chromium on Alpine)
+        run: |
+          umask 077
+          head -c 24 /dev/urandom | base64 | tr -d '/+=' > .secrets/analyste_password
+          docker compose exec -T api observatory create-user analyste --password-stdin < .secrets/analyste_password
+          docker compose exec -T api observatory demo --login analyste
+          chmod 444 .secrets/analyste_password
+          make e2e
       - name: Logs on failure
         if: failure()
-        run: docker compose logs --tail=100 api worker migrate postgres
-      - name: Cleanup CI containers
+        run: docker compose logs --tail=200 api worker migrate postgres
+      - name: Screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-screenshots
+          path: .local/screenshots
+          retention-days: 7
+      - name: Cleanup
         if: always()
-        run: docker compose --profile test down -v
+        run: docker compose down -v

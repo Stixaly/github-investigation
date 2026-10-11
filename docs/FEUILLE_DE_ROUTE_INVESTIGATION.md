@@ -1,8 +1,16 @@
 # Observatory — ce qu'il reste à construire
 
-**État de référence : 11 octobre 2026, après livraison du graphe 3D/2D.**
+**État de référence : 11 octobre 2026, après livraison du graphe 3D/2D. Révisée le même jour après la 0.2** : backend converti en Rust ([ADR 0002](adr/0002-backend-rust.md)), migrations numérotées ([ADR 0003](adr/0003-migrations-versionnees.md)) et CI GitHub complète.
 
-Ce document transforme les besoins du projet en travaux d'implémentation. Il distingue les fonctions présentes, les améliorations nécessaires au pilote d'équipe et les extensions intéressantes. Il complète le [cadrage initial](PROJET_INVESTIGATION_GITHUB.md), l'[état livré](IMPLEMENTATION_V0_1.md) et le [guide du graphe](ATELIER_GRAPHE.md). Pour décider des prochains lots, utiliser cette feuille de route plutôt que les estimations initiales faites avant développement.
+Principaux changements de la révision 0.2 :
+
+- R0 est en grande partie livré ; il reste le contrat des règles, une **file de jobs générique** et une **restauration testée de la base pilote** avant sa montée en 0.2.
+- Un **cadrage RGPD et conditions d'usage GitHub** devient un prérequis de l'ouverture à l'équipe (§13), et le croisement avec des pseudonymes de forums devient une décision explicite (§18).
+- Les champs du premier lot sont confrontés au corpus réel : 88 % des dépôts ont une description, **1,5 % des topics** ; le README conditionne l'utilité des listes (§4.2).
+- Les points de reprise de collecte deviennent bloquants quand les profils dépassent quelques minutes, plus tôt n'apporte rien (§6).
+- Les charges de R5 et R8 sont relevées, et l'enveloppe recalculée (§14) ; le backlog gagne REM-27 à REM-31 (§15).
+
+Ce document transforme les besoins du projet en travaux d'implémentation. Il distingue les fonctions présentes, les améliorations nécessaires au pilote d'équipe et les extensions intéressantes. Il complète le [cadrage initial](PROJET_INVESTIGATION_GITHUB.md), l'[état livré](IMPLEMENTATION.md) et le [guide du graphe](ATELIER_GRAPHE.md). Pour décider des prochains lots, utiliser cette feuille de route plutôt que les estimations initiales faites avant développement.
 
 **Recommandation : construire d'abord la chaîne « mots-clés → résultats expliqués → triage → investigation → suivi ».** Elle apportera davantage à l'analyste qu'un nouveau changement de moteur graphique. La reprise des collectes, les droits et les migrations doivent progresser avec cette chaîne.
 
@@ -35,7 +43,7 @@ flowchart LR
 
 ## 2. Inventaire des écarts
 
-L'inventaire est fondé sur la lecture de `investigator/`, du schéma, des tests, du frontend et des documents locaux. Il ne constitue pas un audit de sécurité ni un nouveau test de charge.
+L'inventaire a été établi sur le socle Python 0.1 (`investigator/`, dont la 0.2 reprend les contrats en Rust), à partir du schéma, des tests, du frontend et des documents locaux. Il ne constitue pas un audit de sécurité ni un nouveau test de charge.
 
 | Domaine | Présent dans le code | Travail restant |
 |---|---|---|
@@ -43,31 +51,37 @@ L'inventaire est fondé sur la lecture de `investigator/`, du schéma, des tests
 | Identités | IDs GitHub stables, identités historiques provisoires | Historique d'alias, transferts, résolution réversible des identités provisoires |
 | Collecte | Compte/dépôt, métadonnées, dépôts possédés, contributeurs, forks, issues/PR, événements partiels | Profils configurables, README, commentaires/reviews, expansion et reprise par page |
 | Budget | Plafond par scan, attente de quota, limitation partagée | Budgets par type d'API, réservations par dossier, équité et coût prévisionnel |
-| Jobs | File PostgreSQL, leases, génération, annulation | Checkpoints, retries contrôlés, mutualisation des demandes, scheduler |
+| Jobs | File PostgreSQL (la table `scans`), leases, génération, annulation, remise en file à l'arrêt du worker | File générique pour les autres travaux asynchrones, checkpoints, retries contrôlés, mutualisation des demandes, scheduler |
 | Recherche | Filtre de liste et filtre de graphe sur un scan | Recherche globale autorisée, index texte, requêtes sauvegardées, facettes |
 | Mots-clés | Aucun module dédié | Listes, règles, versions, tests, résultats expliqués et réévaluation |
 | Graphe | 3D/2D, filtres, voisinage chargé, recherche, dispositions, preuves et PNG | Composition sauvegardée, multi-seeds, chemins, expansion incrémentale, regroupements |
 | Temps | Scans datés, comparaison de relations, précision de date | Différences de propriétés/contenu, vue consolidée, connu/observé, suivi d'une relation |
 | Analyse | Notes et recoupements soumis aux ACL | Triage, hypothèses structurées, communautés, mesures et évaluation |
 | Diffusion | Capture PNG | Rapport avec preuves, export JSON/CSV contrôlé, échanges CTIParsor |
-| Authentification | Comptes CLI, sessions, Argon2, CSRF | Administration des comptes, récupération, désactivation, SSO/MFA |
+| Authentification | Comptes CLI, sessions, Argon2, CSRF, échecs limités par poste et par compte | Administration des comptes, récupération, désactivation, SSO/MFA |
 | Exploitation | Compose Alpine, ressources limitées, proxy TLS optionnel | Restaurations exercées, supervision, rétention, qualification 20 analystes et trois OS |
-| Livraison | Locks, digests, pytest/Ruff, build TypeScript, E2E local | Migrations successives, contrôles frontend, CI E2E, release et dépôt GitHub |
+| Conformité | Données publiques uniquement, aucun objet privé persisté | Analyse d'impact (AIPD), finalité, durées de conservation par donnée, demandes des personnes, conditions d'usage GitHub |
+| Frontend | Composants, hooks, tests Vitest, onglets en état local | Routeur (URL par dossier, scan et résultat), cache de données partagé, contrats API typés |
+| Livraison | Locks, digests, rustfmt/clippy, tests PostgreSQL avec couverture, migrations successives, ESLint/Vitest, CI GitHub avec E2E, fuzzing et CodeQL | Release, SBOM et signature des images, protection de branche |
 
 Limites actuelles à conserver visibles : deux pages de 50 objets par endpoint du profil ; budget de 1 à 50 requêtes par scan ; graphe de 300 nœuds par défaut, plafonné à 500 nœuds et 2 000 liens ; listes limitées à 200 dossiers et 100 scans/notes. Plusieurs milliers de dépôts stockés ne doivent pas signifier plusieurs milliers de nœuds envoyés automatiquement au navigateur.
 
-**Point technique préalable :** `migrate.py` sait actuellement créer/vérifier une unique version 1 avec checksum ; l'API exige aussi cette version. Il faut ajouter une vraie séquence de migrations avant les nouvelles tables, sans modifier le `schema.sql` déjà appliqué. Un mécanisme de version existe, mais l'upgrade v1→v2 n'est pas encore livré.
+**Point technique préalable, traité en 0.2 :** les migrations sont numérotées et vérifiées par empreinte, avec un test d'upgrade depuis la 0.1 et depuis le commit de base en CI ([ADR 0003](adr/0003-migrations-versionnees.md)). Les nouvelles tables de cette feuille de route s'ajoutent par migrations successives.
+
+**Second point préalable, à traiter dans R0 :** la file de jobs est aujourd'hui la table `scans` elle-même, réservée aux collectes GitHub. Les exécutions de règles, découvertes, exports et calculs analytiques prévus ci-dessous sont aussi des travaux asynchrones avec idempotence, annulation et reprise. Ils doivent passer par une **file générique** (`jobs` : type, charge utile, lease, génération, tentatives), qui réutilise les règles de fencing déjà testées, plutôt que par une file par fonctionnalité.
+
+**Corpus réel disponible pour les tests :** l'instantané historique `corpus-a-2026-06` s'importe en 0.2 (250 002 dépôts et 7 419 comptes en 2 min 57 s, 9,7 Mo de mémoire). Sur ces dépôts, 88 % ont une description, 1,5 % des topics non vides. Il sert de jeu de démonstration et de mesure pour R1 et R3, à côté des données synthétiques des tests automatisés.
 
 ## 3. Priorités
 
 | Niveau | Signification | Exemples |
 |---|---|---|
-| P0 | Nécessaire à la fiabilité du prochain lot ou à l'ouverture d'équipe | Migrations, ACL des nouveaux objets, reprise, sauvegarde/restauration, contrôle des budgets |
+| P0 | Nécessaire à la fiabilité du prochain lot ou à l'ouverture d'équipe | Migrations, file de jobs, ACL des nouveaux objets, reprise, sauvegarde/restauration, contrôle des budgets, cadrage RGPD |
 | P1 | Forte valeur d'investigation ; cible du pilote utile | Mots-clés, recherche, triage, veille, expansion et rapport |
 | P2 | Analyse avancée après stabilisation des observations | Communautés, similarité, chemins pondérés, intégration CTI |
 | P3 | Option à justifier par un usage et un budget | Assistant IA, stockage graphe dédié, haute disponibilité, index externe |
 
-P0 ne signifie pas qu'il faut terminer toute l'exploitation avant de montrer les mots-clés. Les migrations et droits du lot mots-clés sont ses prérequis immédiats ; la qualification opérationnelle devient bloquante avant l'ouverture à l'équipe.
+P0 ne signifie pas qu'il faut terminer toute l'exploitation avant de montrer les mots-clés. Les migrations, la file de jobs et les droits du lot mots-clés sont ses prérequis immédiats ; la qualification opérationnelle et le cadrage RGPD deviennent bloquants avant l'ouverture à l'équipe. Exception : une base pilote contient déjà des données réelles, sa restauration doit donc être testée **avant** sa montée en version, pas seulement avant l'ouverture.
 
 ## 4. Listes configurables de mots-clés — première fonctionnalité métier
 
@@ -92,6 +106,8 @@ Ne pas activer implicitement la découverte externe en enregistrant une liste. P
 | Profil du compte | Option distincte des règles « dépôt » | Bio et liens publics, avec provenance |
 | Noms de fichiers et code | P2, sur cible et budget explicites | Analyse statique inerte, sans clone ou exécution systématique |
 
+**Mesure sur le corpus réel** (instantané `corpus-a-2026-06`, 250 002 dépôts) : 88 % ont une description, 1,5 % seulement ont des topics non vides ; sur un scan de forks récent, aucun. Le premier lot reposera donc presque entièrement sur le nom et la description. Les topics restent évalués mais ne doivent pas être présentés comme un signal principal, et le connecteur README (R2) conditionne l'utilité réelle des listes : un nombre élevé de « non évalué » sur le README est attendu en R1 et doit être affiché comme tel.
+
 Un dépôt décrit par un simple objet imbriqué peut avoir moins de champs qu'un profil complet. Un README non collecté doit donner **« non évalué »**, jamais « aucun mot-clé trouvé ». La recherche dans le corps du README nécessite de conserver le texte, pas seulement son URL. GitHub expose un endpoint dédié au README et des références de contenu ; le connecteur devra conserver la révision et borner les tailles. [Documentation Contents](https://docs.github.com/en/rest/repos/contents#get-a-repository-readme).
 
 ### 4.3 Objet « liste »
@@ -110,7 +126,7 @@ Fonctions d'interface : création, duplication, édition, désactivation, import
 - Une expression doit correspondre dans un même champ ; les clauses « tous » peuvent combiner plusieurs champs. Cette distinction apparaît dans l'éditeur.
 - Une règle retourne `match`, `no_match` ou `not_evaluated`. Avec des champs manquants, appliquer une logique à trois états : « tous » ne réussit pas si une clause requise est inconnue ; « au moins un » réussit dès qu'une clause est vraie. Une exclusion dont le champ est inconnu empêche de confirmer le résultat lorsqu'elle est obligatoire.
 - Une correspondance augmente une **priorité de revue**, pas une probabilité de malveillance. Ne pas compter cent occurrences du même terme comme cent preuves indépendantes.
-- Les regex et la recherche approximative restent P2 : moteur et limites de calcul explicites, erreurs compréhensibles, tests de temps maximal. Aucun code Python, SQL ou JavaScript libre dans une règle.
+- Les regex et la recherche approximative restent P2 : moteur et limites de calcul explicites, erreurs compréhensibles, tests de temps maximal. Le moteur `regex` de Rust s'exécute en temps linéaire (pas de retour arrière catastrophique) ; il reste à borner la taille des motifs compilés et des textes, et à refuser les constructions non prises en charge avec un message clair. Aucun code SQL, JavaScript ou script libre dans une règle.
 
 Les exclusions sont locales à une règle ou à une politique explicitement nommée. Un dépôt contenant « research », « educational » ou « malware analysis » ne doit pas être supprimé automatiquement de tous les résultats : conserver le contexte et permettre une décision de triage.
 
@@ -149,6 +165,14 @@ Une occurrence inchangée à chaque scan met à jour la dernière observation sa
 | Dossier non autorisé | Aucun résultat, extrait, compteur ou règle privée révélé |
 | Règle invalide ou import trop gros | Refus avant exécution, erreurs localisées |
 | Ancien snapshot importé aujourd'hui | Dates d'observation et d'évaluation distinctes |
+| Liste exécutée sur le corpus de 250 000 dépôts | Exécution asynchrone, progression visible, annulable, sans bloquer l'API |
+
+### 4.8 Implémentation proposée
+
+- **Moteur de règles dans `crates/observatory-domain`** : analyse et validation de la liste en un AST, normalisation versionnée et évaluation à trois états sont des fonctions pures, testées unitairement. L'import JSON d'une liste est une entrée externe : il reçoit une cible de fuzzing, comme les seeds et les instantanés.
+- **Exécutions via la file de jobs générique** (REM-27) : le worker évalue une version de liste sur un corpus figé (manifeste de scans), par lots, avec checkpoint et annulation ; l'API ne fait qu'accepter la demande.
+- **Lecture des champs** depuis l'observation (`coalesce(scan_entities.data, evidence.payload)`), en conservant le hash de preuve de chaque correspondance.
+- **Frontend** : l'interface actuelle garde ses onglets en état local, sans URL propre. Avant d'ajouter éditeur de listes et file de triage, introduire un routeur (lien partageable vers un dossier, un scan ou un résultat) et un cache de données partagé, comme dans CTIParsor (REM-29). Générer les types TypeScript depuis un contrat OpenAPI de l'API évitera que les deux côtés divergent.
 
 ## 5. Recherche et découverte de dépôts
 
@@ -174,9 +198,13 @@ Les recherches planifiées nécessitent une fenêtre avec chevauchement et une d
 
 ### Priorité P0 : reprendre sans perdre le fil
 
+**Quand cela devient bloquant.** Avec le profil actuel (50 requêtes au plus, environ une minute de collecte), un scan interrompu est rendu immédiatement à la file à l'arrêt du worker (0.2) et recommence en entier : la perte est faible. Les checkpoints deviennent P0 dès qu'un profil dépasse quelques minutes, c'est-à-dire avec le README, la découverte et le suivi. Dans R2, livrer d'abord le connecteur README borné (utile à R1), puis les checkpoints avant d'augmenter les budgets.
+
 Ajouter un checkpoint par cible/endpoint/page : requête suivante, état, pages acquises, compteurs, preuve de page et instant de reprise. Commit atomique de l'ingestion et du checkpoint ; après interruption avant commit, une page peut être relue sans duplication logique. Une requête HTTP peut néanmoins avoir été facturée avant le crash : ne pas promettre « exactement une requête ».
 
 Ajouter retries bornés avec backoff et jitter pour erreurs transitoires, distinction des erreurs de droit/quota/validation, traitement ETag/304 et budget restant visible. Le cache HTTP doit être cloisonné par identité d'accès et représentation ; une réponse 304 peut produire une nouvelle observation liée à la preuve existante. Les budgets ne doivent pas être remis à zéro à chaque retry.
+
+**Ingestion par lots.** L'import d'un instantané fait aujourd'hui environ cinq allers-retours SQL par dépôt : 250 000 dépôts prennent 3 minutes, mémoire constante. Avant d'activer le suivi récurrent, regrouper les insertions (`COPY` dans une table de transit puis insertion idempotente) pour l'import et pour les pages de collecte, sans changer les empreintes ni l'idempotence (REM-31).
 
 La déduplication du corpus existe ; celle des **demandes de collecte** reste à construire. Séparer le job d'acquisition de ses demandes par investigation. Une annulation ou révocation détache son demandeur sans supprimer le travail nécessaire aux autres. Exposer les résultats uniquement via un rattachement autorisé.
 
@@ -202,7 +230,7 @@ Les compteurs de stars, les événements observés et une liste de personnes rep
 
 Ajouter un objet de surveillance attaché à une cible et un dossier : profil, fréquence, priorité, fraîcheur souhaitée, prochain passage, budget et état actif/en pause. Un même dépôt peut être ponctuel dans un dossier et suivi dans un autre.
 
-Le scheduler peut rester un processus Python Alpine utilisant la file PostgreSQL. Il doit empêcher les doublons de créneau, répartir les requêtes, survivre à un redémarrage et ne pas rejouer une semaine entière de scans manqués sans plafond. Les calendriers sont stockés en UTC et affichés dans le fuseau de l'utilisateur.
+Le scheduler peut être un rôle supplémentaire du binaire `observatory`, sous Alpine, utilisant la file PostgreSQL. Il doit empêcher les doublons de créneau, répartir les requêtes, survivre à un redémarrage et ne pas rejouer une semaine entière de scans manqués sans plafond. Les calendriers sont stockés en UTC et affichés dans le fuseau de l'utilisateur.
 
 Alertes utiles : nouveau match, nouvelle relation dans le profil suivi, README modifié, renommage/transfert, nouvelle release ou changement important d'activité. Distinguer une alerte métier d'une collecte devenue partielle ou en erreur.
 
@@ -268,7 +296,7 @@ Pour un rapport, conserver une sélection figée d'observations et d'analyses. S
 
 ### Communautés calculées
 
-Le lot P2 peut comparer une baseline de composantes connexes avec un algorithme de communautés tel que Leiden/Louvain, **sous réserve de prototype et build Alpine**. Le choix final dépendra de la projection et des tests ; aucune bibliothèque native n'est présumée compatible avec musl.
+Le lot P2 peut comparer une baseline de composantes connexes avec un algorithme de communautés tel que Leiden/Louvain, **sous réserve de prototype**. Depuis la 0.2, le calcul peut être écrit en Rust dans le même binaire : une implémentation en Rust pur se compile pour musl/Alpine sans dépendance native, ce qui lève l'essentiel du risque de build. Le choix final dépendra de la projection, de la qualité des résultats et des tests ; une bibliothèque C ou C++ ne sera pas présumée compatible avec musl.
 
 Définir la projection avant l'algorithme : nœuds inclus, période, droits, directions, pondération des types, traitement des forks identiques, bots et hubs. Pour une projection comptes↔comptes, garder les dépôts et observations justifiant chaque lien dérivé.
 
@@ -346,6 +374,19 @@ Le corpus dédupliqué n'est pas automatiquement un corpus intégralement consul
 
 Étendre les tests de non-divulgation aux recherches, facettes, listes privées, alertes, caches, calculs, exports et compositions. Un calcul commun ne doit pas laisser deviner un dossier privé à travers un score ou un compteur. Si la collecte est mutualisée, seuls ses faits publics autorisés sont réutilisables ; noms de dossiers, notes et raisons de surveillance restent cloisonnés.
 
+### Conformité et usage des données
+
+La plateforme collecte des données publiques, mais elles concernent des personnes identifiables (logins, noms affichés, bios, activité datée) et elle les rapproche pour repérer d'éventuels auteurs de logiciels malveillants. Le caractère public des données ne dispense pas du RGPD. **Avant l'ouverture à l'équipe (P0, REM-30)**, faire valider avec le DPO et, si besoin, le juriste :
+
+- la finalité écrite (investigation CTI sur des menaces identifiées) et la base légale retenue ;
+- la nécessité d'une **analyse d'impact (AIPD)** : rapprochement de sources, suivi dans le temps et évaluation de personnes en font probablement partie des cas visés ;
+- la minimisation : les preuves conservent la réponse GitHub entière pour rester fidèles ; décider des champs personnels à ne pas collecter ou à masquer à l'affichage (adresse e-mail publique, liens personnels) ;
+- des **durées de conservation par catégorie** (preuves, observations, notes, résultats de règles, journaux, exports) et une purge vérifiable ;
+- une procédure pour les demandes des personnes (accès, effacement, opposition), y compris la conciliation avec la conservation des preuves d'une investigation en cours ;
+- la relecture des conditions d'utilisation et politiques d'usage acceptable de GitHub, qui encadrent l'usage des informations personnelles obtenues par le service et son API, et la justification de l'usage CTI.
+
+Le résultat est une ADR et une section de `SECURITY.md` ; les écarts deviennent des issues.
+
 ### Identité et audit
 
 Avant ouverture à 20 analystes : administration nominative, désactivation de compte, révocation des sessions, changement/récupération des mots de passe et MFA/SSO si fournisseur disponible. Un éventuel service d'identité ajouté à la plateforme doit aussi satisfaire Alpine ; aucune image non conforme n'est introduite implicitement.
@@ -364,51 +405,51 @@ Définir sauvegarde de PostgreSQL et des futures pièces stockées hors base, ch
 
 Surveiller : ancienneté du plus vieux job, attente quota, durée par endpoint, taux d'erreur, progrès de checkpoints, fraîcheur des cibles, taille des preuves, connexions/verrous PostgreSQL et durée des requêtes. Un worker vivant ne suffit pas à prouver que les investigations avancent.
 
-Ajouter pool de connexions et traitement par lots après mesure. Les limites Compose actuelles sont celles du pilote, pas un dimensionnement validé pour l'équipe. Tester installation, upgrade, restauration et permissions sur AlmaLinux/SELinux, Debian et Ubuntu ; WSL Ubuntu est le seul hôte déjà exercé localement.
+Le pool de connexions existe depuis la 0.2 (sqlx). Le traitement par lots est justifié par la mesure de l'import (§6, REM-31). Les limites Compose actuelles sont celles du pilote, pas un dimensionnement validé pour l'équipe. Tester installation, upgrade, restauration et permissions sur AlmaLinux/SELinux, Debian et Ubuntu ; WSL Ubuntu est le seul hôte déjà exercé localement.
 
 ### Pratiques CTIParsor à compléter
 
-Conserver développement Docker, tests PostgreSQL isolés, locks et ADR. Ajouter mypy, ESLint, tests frontend utiles, mesure de couverture, E2E en CI, contrats API, tests de concurrence et d'upgrade. Le seuil de couverture doit protéger des scénarios métier, pas seulement augmenter un pourcentage. Les protections de branche, la licence, le nom du dépôt et la publication restent à préparer ; aucun dépôt distant n'est créé par cette feuille de route.
+Livré en 0.2 : clippy et rustfmt bloquants, ESLint, Prettier et Vitest, tests PostgreSQL isolés avec le rôle restreint, couverture mesurée avec plancher, test d'upgrade depuis le commit de base, E2E en CI, cargo-deny, npm audit, CodeQL, fuzzing, Dependabot, licence Apache-2.0 et ADR ([alignement](ALIGNEMENT_CTIPARSOR.md)). Restent : contrats API publiés (OpenAPI) et types frontend générés, tests de concurrence à plusieurs workers, SBOM et signature des images, réglages de protection de la branche `main` et publication du dépôt. Le seuil de couverture doit protéger des scénarios métier, pas seulement augmenter un pourcentage.
 
 ## 14. Lots d'implémentation et dépendances
 
-Charges **indicatives en jours-personne**, comprenant développement, tests et documentation, pour une personne maîtrisant la pile. Elles évaluent le travail restant décrit ici, pas le temps déjà passé. À réestimer après R0 et après le premier test de règles ; l'ampleur des connecteurs et du SSO peut changer les ordres de grandeur.
+Charges **indicatives en jours-personne**, comprenant développement, tests et documentation, pour une personne maîtrisant la pile. Depuis la 0.2, la pile serveur est Rust : prévoir en plus une montée en compétence si l'équipe ne le pratique pas. Elles évaluent le travail restant décrit ici, pas le temps déjà passé. À réestimer après R0 et après le premier test de règles ; l'ampleur des connecteurs et du SSO peut changer les ordres de grandeur.
 
 | Lot | Charge | Dépendances | Livraison et critère de sortie |
 |---|---:|---|---|
-| R0 — migrations et contrats | 3–5 | Socle actuel | Upgrade v1→v2 testé, schéma de règles et portée ACL définis, ancienne base préservée |
-| R1 — mots-clés locaux et triage initial | 7–11 | R0 | Listes versionnées, champs de métadonnées, résultats expliqués, file et tests du §4.7 |
-| R2 — collecte reprenable et texte | 8–13 | R0 | Checkpoints, retries, profils, README, tests d'arrêt/reprise et budget |
+| R0 — contrats, file de jobs et restauration | 2–4 | Socle 0.2 (migrations et upgrade v1→v2 déjà livrés) | Schéma de règles et portée ACL définis, file de jobs générique, base pilote sauvegardée puis restaurée avant sa montée en 0.2 |
+| R1 — mots-clés locaux et triage initial | 9–13 | R0 | Listes versionnées, moteur dans le domaine avec fuzzing, nom/description/topics, résultats expliqués, file, routeur frontend et tests du §4.7 |
+| R2 — texte, collecte reprenable et ingestion par lots | 9–15 | R0 | README borné d'abord, puis checkpoints, retries, profils, ingestion par lots, tests d'arrêt/reprise et budget |
 | R3 — découverte et recherche | 5–8 | R1, R2 | Index local, candidats GitHub, pagination, traduction de règles et couverture |
 | R4 — mutualisation et suivi | 6–10 | R2, contrats de triage R1 | Abonnements, scheduler, alertes internes et annulation indépendante |
-| R5 — exploration et temps | 9–15 | R2, R3 | Multi-seeds, expansion, compositions, différences et vue temporelle documentée |
+| R5 — exploration et temps | 15–25 | R2, R3 | Multi-seeds, expansion, compositions, annuler/rétablir, différences et vue temporelle documentée |
 | R6 — dossiers et rapports | 6–10 | R1, R5 | Hypothèses, décisions, rapport HTML et exports traçables |
-| R7 — analyse de communautés | 8–14 | R5 et corpus évalué | Baselines, projections, paramètres, évaluation analyste et build Alpine |
-| R8 — qualification d'équipe | 10–18 | Travail transversal ; sortie après lots retenus | Auth/admin, supervision, restauration, CI/release, charge et matrice Linux |
-| R9 — pilote métier | 4–7 | R1–R6 et exigences R8 ; R7 facultatif | Scénarios réels revus, défauts prioritaires corrigés, décision d'ouverture |
+| R7 — analyse de communautés | 8–14 | R5 et corpus évalué | Baselines, projections, paramètres, évaluation analyste |
+| R8 — qualification d'équipe | 15–25 | Travail transversal ; sortie après lots retenus | Auth/admin, SSO/MFA, supervision, restauration sur hôte vierge, SBOM/signature, charge et matrice Linux |
+| R9 — pilote métier | 4–7 | R1–R6, exigences R8 et cadrage RGPD ; R7 facultatif | Scénarios réels revus, défauts prioritaires corrigés, décision d'ouverture |
 
-**Enveloppe de planification : 66–111 jours-personne**, environ 80–135 avec 20 % de réserve. Ce n'est pas un devis ni un délai calendaire. Le pilote peut exclure R7 ; les idées P3, haute disponibilité, intégrations lourdes et analyse exhaustive du code ne sont pas comprises. Les estimations du cadrage initial ne s'ajoutent pas à celles-ci.
+**Enveloppe de planification : 79–131 jours-personne**, environ 95–157 avec 20 % de réserve (71–117, soit 85–140 avec réserve, sans R7). La hausse par rapport à la première version (66–111) vient de R5 et R8, sous-estimés, et de l'ingestion par lots ; R0 a diminué parce que les migrations sont livrées. Le cadrage RGPD (REM-30) n'est pas compté : il mobilise surtout le DPO et le responsable du projet. Ce n'est pas un devis ni un délai calendaire. Les idées P3, haute disponibilité, intégrations lourdes et analyse exhaustive du code ne sont pas comprises. Les estimations du cadrage initial ne s'ajoutent pas à celles-ci.
 
 Jalons proposés :
 
-1. **Démonstration métier suivante : R0 + R1.** Une liste configurable produit des résultats datés sur le corpus existant, sans appel GitHub supplémentaire.
+1. **Démonstration métier suivante : R0 + R1.** Une liste configurable produit des résultats datés sur le corpus existant (dont l'instantané de 250 000 dépôts), sans appel GitHub supplémentaire.
 2. **Pilote de découverte et veille : R2 + R3 + R4.** README, recherches bornées, reprise et alertes expliquées.
 3. **Atelier d'investigation complet : R5 + R6.** Travail sauvegardé, comparaison et rapport partageable.
-4. **Ouverture d'équipe : sortie R8 + R9.** Restauration et charge prouvées sur matériel connu ; analyse de communautés ajoutée lorsque les données le permettent.
+4. **Ouverture d'équipe : sortie R8 + R9 et cadrage RGPD validé.** Restauration et charge prouvées sur matériel connu ; analyse de communautés ajoutée lorsque les données le permettent.
 
 ## 15. Backlog prêt à convertir en issues
 
-Les identifiants `REM-*` désignent le travail restant ; ils ne remplacent pas les anciens tickets de cadrage. Les descriptions détaillées et critères des sections précédentes font partie de chaque issue.
+Les identifiants `REM-*` désignent le travail restant ; ils ne remplacent pas les anciens tickets de cadrage. Les descriptions détaillées et critères des sections précédentes font partie de chaque issue. `scripts/create-backlog-issues.sh` crée les issues GitHub correspondantes à partir de ce tableau (une seule fois par identifiant). La mention « (0.2 : … ) » indique ce qui est déjà livré.
 
 | ID | Priorité / lot | Travail | Critère de clôture principal |
 |---|---|---|---|
-| REM-01 | P0 / R0 | Migrations successives et compatibilité API | Base v1 montée en v2, checksum v1 inchangé, rollback opérationnel par restauration testé |
+| REM-01 | P0 / R0 | Migrations successives et compatibilité API (0.2 : migrations numérotées, upgrade v1→v2 et test depuis le commit de base livrés) | Rollback opérationnel par restauration testé (voir REM-28) |
 | REM-02 | P0 / R0 | Portée et schéma des règles | Contrat versionné, droits et limites validés par tests |
 | REM-03 | P1 / R1 | CRUD et versions de listes | Brouillon, publication, duplication, archive et import/export |
 | REM-04 | P1 / R1 | Moteur de correspondance | Cas limites du §4.7, résultat inconnu et provenance corrects |
 | REM-05 | P1 / R1 | Exécutions locales asynchrones | Idempotence, annulation, progression et corpus figé |
 | REM-06 | P1 / R1 | File de triage | Assignation, décisions et déduplication sans perte des observations |
-| REM-07 | P0 / R2 | Checkpoints et erreurs transitoires | Worker arrêté/repris à chaque frontière de transaction sans perte logique |
+| REM-07 | P0 dès que les profils dépassent quelques minutes / R2 | Checkpoints et erreurs transitoires | Worker arrêté/repris à chaque frontière de transaction sans perte logique |
 | REM-08 | P0 / R2 | Budgets par profil et ressource API | Pas de dépassement après retry, quota ou redémarrage |
 | REM-09 | P1 / R2 | README et documents texte | Texte borné, révision/hash, état non collecté et rendu inerte |
 | REM-10 | P1 / R3 | Recherche locale et facettes | Pagination stable, ACL sur résultats/compteurs et historique |
@@ -426,8 +467,13 @@ Les identifiants `REM-*` désignent le travail restant ; ils ne remplacent pas l
 | REM-22 | P0 avant équipe / R8 | Comptes, sessions et audit | Désactivation, récupération, rôles et traces des actions critiques |
 | REM-23 | P0 avant équipe / R8 | Sauvegarde/restauration et rétention | Restauration sur hôte vierge et pièces/droits réconciliés |
 | REM-24 | P0 avant équipe / R8 | Supervision et charge | Rapport 20 sessions, ingestion simultanée et seuils annoncés |
-| REM-25 | P0 avant release / R8 | CI et livraison Alpine | Upgrade/E2E, SBOM, contrôles d'images et matrice d'installation |
+| REM-25 | P0 avant release / R8 | CI et livraison Alpine (0.2 : CI bloquante, upgrade, E2E, smoke test des images, cargo-deny, CodeQL, fuzzing) | SBOM, signature des images, protection de branche et matrice d'installation |
 | REM-26 | P1 / R9 | Recette analystes | Parcours complet accepté, limites connues et priorités suivantes consignées |
+| REM-27 | P0 / R0 | File de jobs générique | Scans et exécutions de règles passent par une même file ; lease, génération, annulation et remise en file couverts par les tests existants |
+| REM-28 | P0 / R0 | Restauration de la base pilote avant montée en 0.2 | Dump de la base 0.1, restauration sur une instance séparée, migration 0.2 rejouée et données relues par l'API |
+| REM-29 | P1 / R1 | Routeur et cache de données frontend | URL partageable par dossier, scan et résultat de triage ; rechargement sans perte de contexte |
+| REM-30 | P0 avant équipe / transverse | Cadrage RGPD et conditions d'usage GitHub | AIPD ou décision motivée validée par le DPO, finalité, durées de conservation, procédure des demandes des personnes, ADR |
+| REM-31 | P1 / R2 | Ingestion par lots | Instantané de 250 000 dépôts importé nettement plus vite, mémoire bornée, empreintes et idempotence inchangées |
 
 ## 16. Critères de qualité et recette
 
@@ -454,7 +500,7 @@ Les tests automatisés utilisent des données synthétiques et des réponses Git
 
 Recherche locale p95 inférieur à 1 seconde ; voisinage borné p95 inférieur à 2 secondes ; acceptation d'un job inférieure à 1 seconde. Mesurer les parcours avec 20 sessions pendant ingestion. Les temps de collecte externe dépendent des quotas et ne constituent pas un engagement fixe.
 
-Commencer avec 10 000 dépôts et leurs relations/observations, puis un corpus de stress d'un million de nœuds, dix millions de relations et cinquante millions d'observations si les mesures le justifient. Ces tailles sont des scénarios, pas une capacité acquise. Inclure hubs, forks massifs, périodes longues et ACL hétérogènes. Publier matériel, volumes, concurrence, état des caches, durée et taux d'erreur avec les résultats.
+Commencer avec le corpus réel déjà importable : l'instantané `corpus-a-2026-06` (250 002 dépôts, 7 419 comptes) s'importe en 3 minutes avec moins de 10 Mo de mémoire, et la fusion `corpus-a-merged` (357 Mo) est le palier suivant. Puis un corpus de stress d'un million de nœuds, dix millions de relations et cinquante millions d'observations si les mesures le justifient. Ces tailles sont des scénarios, pas une capacité acquise. Inclure hubs, forks massifs, périodes longues et ACL hétérogènes. Publier matériel, volumes, concurrence, état des caches, durée et taux d'erreur avec les résultats.
 
 ### Définition de « terminé »
 
@@ -483,8 +529,10 @@ Pour chaque fonction : migration testée si nécessaire, contrat d'API, contrôl
 | Décision | Proposition de départ | À confirmer avant |
 |---|---|---|
 | Première portée des listes | Privées à une investigation, duplication possible | R1 |
-| Premiers champs | Nom, description, topics ; README avec R2 | R1/R2 |
-| Listes initiales | Quelques thèmes écrits par l'équipe, pas un énorme dictionnaire automatique | Recette R1 |
+| Premiers champs | Nom et description (88 % des dépôts du corpus), topics (1,5 %) ; README en tête de R2 | R1/R2 |
+| Listes initiales | Quelques thèmes écrits par l'équipe, pas un énorme dictionnaire automatique ; le lexique de ctimap-tool (`keywords.yaml`) sert de matière première relue, pas d'import direct | Recette R1 |
+| Croisement avec des pseudonymes de forums | Hors périmètre du pilote. ctimap-tool rapprochait les logins GitHub de listes de pseudonymes issues de forums ; si l'équipe le veut, en faire un lot séparé avec son AIPD, des correspondances présentées comme homonymies possibles et jamais comme identités | Avant R3 |
+| Base légale, AIPD et conservation | Finalité CTI écrite, AIPD probablement nécessaire, durées par catégorie de donnée, à valider avec le DPO | Avant l'ouverture à l'équipe (REM-30) |
 | Partage des faits | Périmètre autorisé actuel ; corpus global seulement sur décision explicite | R3/R4 |
 | Découverte externe | Manuelle, bornée, candidats avant collecte approfondie | R3 |
 | Fréquence de surveillance | Quotidienne proposée, modifiable ; priorité et quotas mesurés | R4 |
@@ -492,13 +540,13 @@ Pour chaque fonction : migration testée si nécessaire, contrat d'API, contrôl
 | Infrastructure | Mesurer sur serveur disponible avant achat ou HA | R8 |
 | Identité | Réutiliser un fournisseur existant si compatible avec les contraintes | R8 |
 | Rétention et disponibilité | Définir durée par donnée et objectifs RPO/RTO | R8 |
-| Dépôt GitHub | Nom, propriétaire, licence, visibilité et protection des branches | Publication |
+| Dépôt GitHub | Licence Apache-2.0 retenue ; nom, propriétaire, visibilité et protection des branches à fixer | Publication |
 
-Ces propositions permettent de commencer R0/R1 sans exiger une décision sur tous les futurs modules. Le lot recommandé immédiatement est **migrations + listes de mots-clés locales versionnées + résultats expliqués + triage initial**.
+Ces propositions permettent de commencer R0/R1 sans exiger une décision sur tous les futurs modules. Le lot recommandé immédiatement est **restauration testée de la base pilote + file de jobs + listes de mots-clés locales versionnées + résultats expliqués + triage initial**, avec le cadrage RGPD lancé en parallèle.
 
 ## 19. Références et limites de cette feuille de route
 
-Sources locales examinées : `investigator/api.py`, `collector.py`, `store.py`, `schema.sql`, `migrate.py`, `db.py`, `security.py`, `worker.py`, tests, Compose et documentation. Les validations déjà exécutées sont décrites dans l'[état livré](IMPLEMENTATION_V0_1.md) et l'[atelier graphe](ATELIER_GRAPHE.md) ; elles ne sont pas revendiquées pour les fonctions encore proposées.
+Révision 0.2 : fondée sur le code Rust livré, ses validations et des mesures sur l'instantané `corpus-a-2026-06` importé dans une base de test (taux de remplissage des champs, durée et mémoire de l'import). Sources locales examinées pour la première version (socle 0.1) : `investigator/api.py`, `collector.py`, `store.py`, `schema.sql`, `migrate.py`, `db.py`, `security.py`, `worker.py`, tests, Compose et documentation ; leurs équivalents 0.2 sont dans `crates/observatory/src/`. Les validations déjà exécutées sont décrites dans l'[état livré](IMPLEMENTATION.md) et l'[atelier graphe](ATELIER_GRAPHE.md) ; elles ne sont pas revendiquées pour les fonctions encore proposées.
 
 Les pages officielles GitHub et PostgreSQL sont liées près des décisions concernées et ont été consultées le 11 octobre 2026. Les capacités d'API doivent être retestées au moment de développer chaque connecteur avec la version et les droits retenus. Les pratiques de développement reprises de CTIParsor sont documentées dans l'[alignement local](ALIGNEMENT_CTIPARSOR.md).
 

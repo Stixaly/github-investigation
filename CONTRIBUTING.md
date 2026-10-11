@@ -1,52 +1,74 @@
 # Contribuer
 
-Le développement et les tests de référence se font dans des conteneurs Alpine. Conserver le code historique en lecture seule ; ne jamais charger ses fichiers pickle ni copier de secret dans un test, une image ou un commit.
+Le développement et les tests de référence se font dans des conteneurs Alpine ; les mêmes contrôles tournent en local avec `rustup` (la version est fixée par `rust-toolchain.toml`) et Node 24. Ne jamais charger les pickles historiques ni copier un secret dans un test, une image ou un commit.
 
-## Tests
+## Flux de travail
+
+1. Créer une branche depuis `main` (`feat/…`, `fix/…`, `docs/…`).
+2. Lancer `make check` (ou `make test` sans chaîne locale) avant de pousser.
+3. Ouvrir une pull request : la CI doit être verte, et une décision d'architecture notable s'accompagne d'un ADR dans `docs/adr/`.
+4. Toute modification visible par l'exploitation ou les analystes est notée dans [CHANGELOG.md](CHANGELOG.md).
+
+Le travail restant est décrit dans la [feuille de route](docs/FEUILLE_DE_ROUTE_INVESTIGATION.md) ; son backlog (§15, identifiants `REM-*`) se convertit en issues GitHub avec `sh scripts/create-backlog-issues.sh` (essai préalable : `--dry-run`). Une nouvelle ligne `REM-*` ajoutée au tableau devient une issue au passage suivant.
+
+## Commandes
+
+| Commande | Effet |
+|---|---|
+| `make test` | Construit l'image de test Rust, démarre un PostgreSQL jetable, lance tous les tests ; puis Prettier, ESLint, TypeScript et Vitest dans Node Alpine. |
+| `make check` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm run check`, avec les outils locaux. |
+| `make audit` | `cargo deny check` et `npm audit` des dépendances de production. |
+| `make e2e` | Parcours navigateur Chromium sous Alpine, contre la pile démarrée (voir plus bas). |
+
+Sans base configurée, `cargo test` exécute les tests unitaires et **ignore** les tests d'intégration PostgreSQL en le signalant. Pour les lancer en local :
 
 ```sh
-sh scripts/setup.sh
-docker compose --profile test build test
-docker compose --profile test run --rm test
+docker run -d --rm --name observatory-test-db -e POSTGRES_PASSWORD=ephemeral-tests-only -p 127.0.0.1:55432:5432 postgres:18-alpine
+TEST_DATABASE_URL=postgres://postgres:ephemeral-tests-only@127.0.0.1:55432/postgres cargo test
 ```
 
-Ces commandes compilent TypeScript/Vite, démarrent `test-postgres`, vérifient le schéma puis lancent pytest et Ruff. La fixture pytest refuse d'effacer des tables si `DB_HOST` n'est pas exactement `test-postgres`. Le conteneur de test ne reçoit aucun secret d'exploitation. Ne pas changer cette protection pour utiliser une base contenant des données utiles.
+Chaque test crée sa propre base `observatory_test_<uuid>` et travaille avec le rôle applicatif restreint : aucune base existante n'est vidée. En CI, `REQUIRE_DB_TESTS=1` transforme un test ignoré en échec.
 
-Les tests de collecte simulent GitHub ; ils ne nécessitent ni token ni réseau GitHub. Les contraintes métier prioritaires sont les ACL, la provenance, le temps, les quotas et la reprise concurrente.
+## Règles du code
 
-Pour libérer seulement le service PostgreSQL de test :
+- **Rust** : `cargo fmt` ; clippy `all` en erreur et `pedantic` sans avertissement ; `unsafe` interdit ; pas de `unwrap()` hors des tests. Les règles pures, en particulier tout ce qui lit une entrée tierce, vont dans `crates/observatory-domain`, avec tests unitaires et, si besoin, une cible de fuzzing. Des tests unitaires qui manipulent des mots de passe ou des jetons de test vont dans un fichier `<module>_tests.rs` (déclaré par `#[path]`), exclu de CodeQL comme les tests d'intégration.
+- **SQL** : paramètres liés uniquement (`$1`), jamais de valeur interpolée ; un motif `LIKE` saisi par un analyste passe par `escape_like`.
+- **Frontend** : Prettier, ESLint (`typescript-eslint` + règles des hooks React), TypeScript strict, tests Vitest/Testing Library à côté des composants. Les libellés et rôles ARIA servent au test navigateur : les modifier avec `frontend/e2e.mjs`.
+- **Domaine** : ne jamais interpréter une absence dans une collecte partielle comme une suppression ; appliquer les droits de l'investigation avant de charger preuves, relations, notes ou recoupements ; ne jamais persister un objet privé, pas même comme preuve.
+
+## Migrations
+
+- Ne jamais modifier une migration déjà appliquée : ajouter `migrations/NNNN_nom.sql` et l'entrée correspondante dans `crates/observatory/src/migrate.rs`.
+- Ajouter un test d'upgrade dans `crates/observatory/tests/migrations.rs` quand la migration transforme des données.
+- La CI migre une base créée par le commit de base (`scripts/check-migration-from-base.sh`) et vérifie qu'aucune ligne n'est perdue.
+
+Voir l'[ADR 0003](docs/adr/0003-migrations-versionnees.md).
+
+## Dépendances
+
+- Rust : `Cargo.lock` est versionné, toutes les commandes utilisent `--locked`. Une nouvelle dépendance doit passer `cargo deny check` (licence permissive, aucune vulnérabilité connue, registre crates.io uniquement).
+- npm : versions exactes dans `package.json`, `package-lock.json` versionné. Vérifier que le lock contient encore les binaires `linux-x64-musl` nécessaires au build Alpine.
+- Images : épinglées par digest ; vérifier qu'une nouvelle image contient `/etc/alpine-release`. Dependabot propose les mises à jour chaque semaine.
+
+## Fuzzing
 
 ```sh
-docker compose --profile test stop test-postgres
-docker compose --profile test rm -f test-postgres
+rustup toolchain install nightly --profile minimal
+cargo install cargo-fuzz --locked
+cd fuzz && cargo +nightly fuzz run canonical corpus/canonical seeds/canonical -- -max_total_time=60
 ```
+
+Cibles : `seed`, `pagination`, `canonical`, `snapshot`. Une entrée qui a fait échouer une cible est ajoutée à `fuzz/seeds/<cible>/` une fois corrigée.
 
 ## Vérification du navigateur
 
-Le parcours E2E attend un compte et le dossier fictif créé par `investigator.cli demo`. Le mot de passe de ce compte est lu dans un fichier local ignoré par Git. Il n'est jamais transmis en argument de commande.
+Le parcours E2E attend un compte `analyste` et le dossier fictif créé par `observatory demo`. Son mot de passe est lu dans `.secrets/analyste_password`, jamais passé en argument de commande :
 
 ```sh
-docker build -f frontend/Dockerfile.browser -t github-investigation:browser .
-mkdir -p .local/screenshots
-docker run --rm --network host --user "$(id -u):$(id -g)" \
-  --cap-drop ALL --security-opt no-new-privileges \
-  -e HOME=/tmp -e LOGIN=analyste \
-  -v "$PWD/.secrets/analyste_password:/bootstrap_password:ro" \
-  -v "$PWD/.local/screenshots:/output" \
-  github-investigation:browser
+docker compose up --build -d --wait
+docker compose exec -T api observatory create-user analyste --password-stdin < .secrets/analyste_password
+docker compose exec -T api observatory demo --login analyste
+make e2e
 ```
 
-Adapter le chemin du fichier de mot de passe à son environnement. Le test se connecte à `http://localhost:8088` par défaut ; `BASE_URL` permet une autre origine. Chromium est installé depuis Alpine uniquement dans cette image de test. Son lancement sans sandbox est limité au conteneur de test de l'application locale ; ce navigateur ne fait pas partie de l'architecture d'exploitation.
-
-Le test 3D utilise Mesa EGL en rendu logiciel (`LIBGL_ALWAYS_SOFTWARE=1`, `EGL_PLATFORM=surfaceless`, ANGLE `gl-egl`). Il ne nécessite pas de GPU sur l'hôte. Ces réglages du navigateur de test ne sont pas appliqués aux navigateurs des analystes. Le parcours exige un rendu 3D effectif, puis vérifie séparément le repli 2D en simulant l'indisponibilité de WebGL.
-
-## Dépendances et migrations
-
-- Fixer les versions npm et conserver `package-lock.json`.
-- Régénérer les locks Python avec hashes **dans Python Alpine**, à partir de `requirements/*.in`, puis reconstruire les tests.
-- Épingler les images par digest et vérifier qu'elles contiennent `/etc/alpine-release`.
-- Ne pas modifier un schéma déjà appliqué. Ajouter une migration numérotée et un test d'upgrade à partir d'une copie de la version précédente.
-- Ne pas interpréter une absence dans une collecte partielle comme une suppression.
-- Appliquer les ACL avant de charger preuves, relations, annotations ou recoupements.
-
-La CI actuelle est dans `.github/workflows/ci.yml`. Les protections de branche, la licence et le dépôt distant devront être définis lors de la publication.
+Chromium est installé depuis Alpine uniquement dans cette image de test ; son lancement sans sandbox est limité à ce conteneur. Le rendu 3D utilise Mesa EGL en rendu logiciel, sans GPU. Le parcours exige un rendu 3D effectif, puis vérifie le repli 2D en simulant l'indisponibilité de WebGL. Les captures sont écrites dans `.local/screenshots/`, ignoré par Git.

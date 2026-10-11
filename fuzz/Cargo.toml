@@ -1,0 +1,44 @@
+[package]
+name = "observatory-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+observatory-domain = { path = "../crates/observatory-domain" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+# Not a member of the main workspace: built with nightly by cargo-fuzz only.
+[workspace]
+
+[[bin]]
+name = "seed"
+path = "fuzz_targets/seed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pagination"
+path = "fuzz_targets/pagination.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "canonical"
+path = "fuzz_targets/canonical.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snapshot"
+path = "fuzz_targets/snapshot.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,20 @@
+name: Besoin d'analyste
+description: Une fonction ou une amélioration pour les investigations.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Besoin
+      description: Quelle question d'investigation cette fonction aide-t-elle à traiter ?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+  - type: textarea
+    id: limits
+    attributes:
+      label: Limites et risques
+      description: Données concernées, droits, quota GitHub, risque d'attribution abusive.

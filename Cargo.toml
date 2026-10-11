@@ -1,0 +1,81 @@
+[workspace]
+resolver = "3"
+members = ["crates/observatory-domain", "crates/observatory"]
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+observatory-domain = { path = "crates/observatory-domain" }
+
+anyhow = "1"
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash", "std"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "tracing"] }
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+hex = "0.4"
+hmac = "0.12"
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "stream"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+# Floats are parsed with correct rounding, as Python does. Not `arbitrary_precision`:
+# its private number marker turns an object keyed `$serde_json::private::Number`
+# into a number (found by fuzz/fuzz_targets/canonical.rs, see ADR 0002).
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "limit", "set-header", "timeout", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+# Test-only.
+http-body-util = "0.1"
+tempfile = "3"
+wiremock = "0.6"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Pedantic lints that only add noise here: French doc comments name SQL and
+# HTTP terms freely, and every fallible function returns a documented Result.
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"
+# Each await point that holds a database transaction is intended.
+significant_drop_tightening = "allow"
+dbg_macro = "deny"
+print_stdout = "warn"
+todo = "deny"
+unwrap_used = "warn"
+
+# Argon2 runs ~50x slower unoptimized; tests hash several passwords each.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"
