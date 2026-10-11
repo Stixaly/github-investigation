@@ -1,0 +1,14 @@
+**
+!investigator/
+!investigator/**
+!requirements/
+!requirements/**
+!frontend/
+!frontend/**
+frontend/node_modules
+frontend/dist
+!tests/
+!tests/**
+!pyproject.toml
+!Dockerfile
+

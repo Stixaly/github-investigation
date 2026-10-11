@@ -1,0 +1,13 @@
+.env
+.secrets/
+.local/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+ctimap-tool/
+*.log
+*.dump
+

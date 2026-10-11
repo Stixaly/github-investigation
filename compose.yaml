@@ -1,0 +1,129 @@
+name: github-investigation
+
+x-app: &app
+  image: github-investigation:local
+  build:
+    context: .
+    target: runtime
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  pids_limit: 128
+  mem_limit: 512m
+  cpus: 1.0
+  init: true
+  networks: [backend]
+  environment: &environment
+    DB_HOST: postgres
+    DB_NAME: investigation
+    DB_USER: investigator
+    DB_PASSWORD_FILE: /run/secrets/db_app
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8088}
+  secrets: [db_app]
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: postgres
+    environment:
+      POSTGRES_DB: investigation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin
+    secrets: [db_admin]
+    volumes: [pgdata:/var/lib/postgresql]
+    tmpfs: ["/tmp:size=64m", "/var/run/postgresql:size=16m,mode=1777"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [backend]
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d investigation"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    environment:
+      <<: *environment
+      DB_USER: postgres
+      DB_PASSWORD_FILE: /run/secrets/db_admin
+      APP_PASSWORD_FILE: /run/secrets/db_app
+    secrets: [db_admin, db_app]
+    command: [python, -m, investigator.migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *app
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:${PORT:-8088}:8000"]
+    networks: [backend, frontend]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    <<: *app
+    command: [python, -m, investigator.worker]
+    environment:
+      <<: *environment
+      GITHUB_TOKEN_FILE: /run/secrets/github_token
+    secrets: [db_app, github_token]
+    networks: [backend, egress]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+  test:
+    <<: *app
+    profiles: [test]
+    image: github-investigation:test
+    build: {context: ., target: dev}
+    environment:
+      <<: *environment
+      DB_HOST: test-postgres
+      DB_USER: postgres
+      DB_PASSWORD: ephemeral-tests-only
+      DB_PASSWORD_FILE: ""
+      APP_PASSWORD: ephemeral-tests-only
+    secrets: []
+    depends_on:
+      test-postgres: {condition: service_healthy}
+    command: [sh, -c, "python -m investigator.migrate && python -m pytest -p no:cacheprovider && ruff check --no-cache ."]
+
+  test-postgres:
+    profiles: [test]
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_DB: investigation
+      POSTGRES_PASSWORD: ephemeral-tests-only
+    tmpfs: [/var/lib/postgresql, /var/run/postgresql]
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d investigation"]
+      interval: 2s
+      retries: 20
+
+networks:
+  backend: {internal: true}
+  frontend: {}
+  egress: {}
+
+volumes:
+  pgdata: {}
+
+secrets:
+  db_admin: {file: ./.secrets/db_admin}
+  db_app: {file: ./.secrets/db_app}
+  github_token: {file: ./.secrets/github_token}

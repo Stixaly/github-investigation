@@ -1,0 +1,4 @@
+-r runtime.in
+pytest>=8,<10
+ruff>=0.11,<1
+

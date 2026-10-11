@@ -1,0 +1,30 @@
+name: Alpine platform
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare isolated credentials
+        run: sh scripts/setup.sh
+      - name: Build and run PostgreSQL integration tests, Ruff and TypeScript checks
+        run: make test
+      - name: Start runtime
+        run: docker compose up --build -d --wait
+      - name: Smoke
+        run: |
+          curl --fail http://localhost:8088/ready
+          curl --fail http://localhost:8088/ > /dev/null
+          docker compose exec -T api sh -c 'test "$(id -u)" = 10001 && test -f /etc/alpine-release'
+          docker compose exec -T postgres sh -c 'test "$(id -u)" != 0 && test -f /etc/alpine-release'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=100 api worker migrate postgres
+      - name: Cleanup CI containers
+        if: always()
+        run: docker compose --profile test down -v
