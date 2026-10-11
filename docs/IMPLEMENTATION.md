@@ -53,7 +53,10 @@ Exécutée le 11 octobre 2026 sous Ubuntu 26.04 (WSL), Rust 1.99.0, PostgreSQL 1
 - **Collecte réelle** bornée sur `octocat/Hello-World` avec un budget de 6 requêtes : 6 requêtes en 7 secondes, pagination canonique suivie, 100 forks et 100 issues/PR, couverture et statut `partial` corrects ; 227 des 441 observations ne recopient pas leur preuve.
 - **Import réel** de l'instantané `corpus-a-2026-06` (83 Mo) : 7 419 comptes et 250 002 dépôts en 2 min 57 s, **9,7 Mo de mémoire maximale** ; le temps est dominé par les allers-retours SQL.
 
-Non exécutés pendant ce lot, faute d'accès au démon Docker sur le poste de développement : construction des images Alpine, `make test`, smoke test Compose, proxy HTTPS et parcours Chromium `make e2e`. Ils sont exécutés par la CI GitHub (job `containers`) dès la première pull request. Les hôtes AlmaLinux et Debian restent à qualifier.
+- **Conteneurs Alpine** (Docker 29.8, pile Compose isolée du pilote sous un autre nom de projet) : les 66 tests Rust passent dans l'image de test contre PostgreSQL 18 jetable ; contrôles frontend dans Node Alpine ; pile complète démarrée, `/ready`, page d'accueil, CSP, API en UID 10001 sur Alpine 3.24.2, PostgreSQL non root, `migrate --check`. Image d'exécution : **25,8 Mo**, contre 137,5 Mo pour l'image Python 0.1.
+- **Parcours Chromium sous Alpine** (`frontend/e2e.mjs`) réussi en entier : rendu 3D, orbite, clic et preuve, voisinage, export PNG, passage en 2D, filtres, dispositions, zoom, clic sur une relation, chronologie, affichage mobile, repli sans WebGL, déconnexion.
+
+Non exécutés pendant ce lot : proxy HTTPS (`compose.tls.yaml`) avec la configuration 0.2, et montée en version d'une base pilote réelle (prévue avec REM-28 après restauration testée). Les hôtes AlmaLinux et Debian restent à qualifier.
 
 Le jeu de démonstration est fictif. Les données du corpus A servent uniquement à valider le connecteur et l'import : aucune qualification malveillante ne leur est attribuée.
 
