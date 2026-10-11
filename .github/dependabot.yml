@@ -13,6 +13,11 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      # typescript-eslint declares TypeScript < 6.1 as its peer dependency:
+      # move both together once it supports TypeScript 7 (same pin as CTIParsor).
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
     groups:
       frontend-minor-and-patch:
         update-types: ["minor", "patch"]
@@ -25,11 +30,16 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Base images pinned by digest in the Dockerfile and compose files.
+  # Base images pinned by digest in the Dockerfiles and compose files.
   - package-ecosystem: docker
-    directory: /
+    directories: [/, /frontend]
     schedule:
       interval: weekly
+    ignore:
+      # Node stays on an LTS line, aligned with CI's setup-node: a major
+      # (26 once it is LTS) is a deliberate change, not a weekly bump.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directory: /

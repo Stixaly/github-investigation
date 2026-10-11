@@ -37,7 +37,7 @@ async fn upgrades_a_database_created_by_the_python_platform() {
         .execute(&mut conn)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "INSERT INTO investigations(id, title) VALUES('{case}', 'Avant migration'); \
          INSERT INTO memberships VALUES('{case}', '{user}', 'owner'); \
          INSERT INTO scans(id, investigation_id, requested_by, source, seed, status, idempotency_key) \
@@ -48,7 +48,7 @@ async fn upgrades_a_database_created_by_the_python_platform() {
            VALUES('{scan}', '{entity}', 'h1', '{payload}', 'instant'); \
          INSERT INTO login_attempts(login) VALUES('alice')",
         Uuid::new_v4()
-    ))
+    )))
     .execute(&mut conn)
     .await
     .unwrap();

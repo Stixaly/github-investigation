@@ -138,6 +138,17 @@ try {
       .filter((e) => e.data('label') === 'auteur de')
       .first();
     cy.fit(edge.union(edge.connectedNodes()), 100);
+    // The force layout is not deterministic: the midpoint can sit under another
+    // node. Take the first point of the segment that no node body covers.
+    const start = edge.source().renderedPosition();
+    const end = edge.target().renderedPosition();
+    const bodies = cy.nodes(':visible').map((node) => node.renderedBoundingBox({ includeLabels: false }));
+    const free = (point) =>
+      !bodies.some((box) => point.x >= box.x1 && point.x <= box.x2 && point.y >= box.y1 && point.y <= box.y2);
+    for (const share of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+      const point = { x: start.x + (end.x - start.x) * share, y: start.y + (end.y - start.y) * share };
+      if (free(point)) return point;
+    }
     return edge.renderedMidpoint();
   });
   await page.locator('.graph').click({ position: edgePoint });
