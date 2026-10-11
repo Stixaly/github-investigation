@@ -84,6 +84,37 @@ docker compose up -d --force-recreate worker
 
 Seul le worker reçoit ce token. Les requêtes utilisent une origine GitHub fixe, refusent les redirections et valident les liens de pagination. Une même base PostgreSQL coordonne le budget global. Chaque scan possède son propre plafond, compris entre 1 et 50 requêtes ; l'interface propose 6, 12 ou 24. Les droits d'un token ne changent pas le périmètre public du produit.
 
+### Token recommandé
+
+Un token *fine-grained* limité aux dépôts publics en lecture (« Public repositories (read-only) »), sans autre permission, suffit : le produit ne lit que des données publiques. Lui donner une date d'expiration et prévoir son renouvellement. Il porte le quota REST de 60 requêtes par heure (accès anonyme) à 5 000. Une GitHub App obtient davantage sur une grande organisation, mais ses jetons d'installation expirent après une heure et le worker ne sait pas encore les renouveler. Ne pas multiplier les tokens ou les comptes pour contourner les quotas.
+
+Vérifier l'accès et les quotas sans consommer de requête :
+
+```sh
+docker compose exec worker observatory github-status
+```
+
+### Économie de quota
+
+Le collecteur ([ADR 0005](adr/0005-collecte-econome.md)) :
+
+- demande des pages de 100 éléments, le maximum de l'API ;
+- règle son rythme sur les en-têtes `x-ratelimit-*`, par ressource de quota et pour tous les workers : pleine vitesse tant qu'il reste plus d'un cinquième du quota, puis répartition du reste jusqu'à la remise à zéro, et attente de la remise à zéro quand il ne reste que la réserve (1 % du quota) ;
+- garde chaque réponse dans un cache cloisonné par accès et la revalide par requête conditionnelle : une réponse 304 n'est pas décomptée par GitHub pour un accès authentifié, ni par le budget du scan ;
+- réutilise sans requête une réponse confirmée depuis moins de 10 minutes ; l'observation est alors datée de cette confirmation ;
+- reprend un scan interrompu (attente de quota, arrêt du worker) à sa page suivante ;
+- refait au plus deux fois une requête après une erreur réseau ou 5xx, chaque tentative comptant dans le budget du scan.
+
+La couverture de chaque scan détaille ces effets dans `stats` : requêtes envoyées, réponses 304, réponses servies par le cache, nouvelles tentatives. Réglages facultatifs, à placer dans `.env` :
+
+| Variable | Défaut | Effet |
+|---|---|---|
+| `GITHUB_MIN_INTERVAL_MS` | 250 | Écart minimal entre deux requêtes, tous workers confondus |
+| `GITHUB_CACHE_FRESHNESS_SECONDS` | 600 | Réutilisation sans requête ; `0` pour toujours interroger GitHub |
+| `GITHUB_CACHE_RETENTION_DAYS` | 7 | Purge des réponses que GitHub n'a pas reconfirmées depuis |
+
+Le cache contient des données personnelles publiques (logins, profils) : sa durée de conservation relève du cadrage RGPD (REM-30), comme celle des preuves.
+
 Un scan peut être partiel même avec un statut terminal normal : consulter sa couverture. Les étoiles sont issues des `WatchEvent` disponibles, pas d'un inventaire exhaustif. Les limitations proviennent notamment du [flux d'événements GitHub](https://docs.github.com/en/rest/activity/events) et des [restrictions sur les listings annoncées en 2026](https://github.blog/changelog/2026-06-30-upcoming-access-restrictions-to-public-api-endpoints-and-ui-views/).
 
 ## 5. Comptes et import historique

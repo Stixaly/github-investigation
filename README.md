@@ -76,7 +76,7 @@ La CI GitHub bloque sur : rustfmt, clippy pedantic sans avertissement, tests uni
 - [Travail restant, mots-clés configurables et feuille de route](docs/FEUILLE_DE_ROUTE_INVESTIGATION.md)
 - [Cadrage complet et architecture cible](docs/PROJET_INVESTIGATION_GITHUB.md)
 - [Inventaire historique](docs/INVENTAIRE_HISTORIQUE.md) · [Alignement avec CTIParsor](docs/ALIGNEMENT_CTIPARSOR.md)
-- Décisions : [0001 socle Alpine/PostgreSQL](docs/adr/0001-socle-alpine-postgresql.md) · [0002 backend Rust](docs/adr/0002-backend-rust.md) · [0003 migrations](docs/adr/0003-migrations-versionnees.md) · [0004 échecs de connexion](docs/adr/0004-limitation-des-echecs-de-connexion.md)
+- Décisions : [0001 socle Alpine/PostgreSQL](docs/adr/0001-socle-alpine-postgresql.md) · [0002 backend Rust](docs/adr/0002-backend-rust.md) · [0003 migrations](docs/adr/0003-migrations-versionnees.md) · [0004 échecs de connexion](docs/adr/0004-limitation-des-echecs-de-connexion.md) · [0005 collecte économe](docs/adr/0005-collecte-econome.md)
 
 ## Licence
 

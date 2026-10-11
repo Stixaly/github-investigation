@@ -9,11 +9,13 @@ use std::time::Duration;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::collector::{CollectError, Collector, GitHub};
+use crate::collector::{CollectError, Collector, GitHub, Settings, cache};
 use crate::model::Scan;
 
 /// Reprises tolérées pour un scan dont le worker a disparu.
 pub const MAX_ATTEMPTS: i32 = 3;
+/// Fréquence de purge des réponses GitHub en cache.
+const PURGE_EVERY: Duration = Duration::from_secs(3600);
 
 /// Réserve le plus ancien scan GitHub disponible, ou reprend un scan dont le lease a expiré.
 pub async fn claim(pool: &PgPool) -> sqlx::Result<Option<Scan>> {
@@ -49,8 +51,8 @@ pub async fn claim(pool: &PgPool) -> sqlx::Result<Option<Scan>> {
 }
 
 /// Exécute un scan réservé et enregistre son état final si le lease est toujours détenu.
-pub async fn execute(pool: &PgPool, github: &GitHub, scan: &Scan, interval: Duration) -> sqlx::Result<()> {
-    let collector = Collector { pool, github, scan, interval };
+pub async fn execute(pool: &PgPool, github: &GitHub, scan: &Scan, settings: Settings) -> sqlx::Result<()> {
+    let collector = Collector::new(pool, github, scan, settings);
     let (status, error, delay) = match collector.collect().await {
         Ok(status) => (status, None, 0.0),
         Err(CollectError::LeaseLost) => return Ok(()),
@@ -99,10 +101,19 @@ pub async fn release(pool: &PgPool, scan: &Scan) -> sqlx::Result<()> {
     .map(|_| ())
 }
 
-/// Boucle du worker, jusqu'au signal d'arrêt.
-pub async fn run(pool: PgPool, github: GitHub, interval: Duration, shutdown: impl Future<Output = ()>) {
+/// Boucle du worker, jusqu'au signal d'arrêt. Purge aussi le cache HTTP expiré, au démarrage puis toutes les heures.
+pub async fn run(pool: PgPool, github: GitHub, settings: Settings, shutdown: impl Future<Output = ()>) {
     tokio::pin!(shutdown);
+    let mut next_purge = tokio::time::Instant::now();
     loop {
+        if tokio::time::Instant::now() >= next_purge {
+            next_purge = tokio::time::Instant::now() + PURGE_EVERY;
+            match cache::purge(&pool, settings.retention).await {
+                Ok(0) => {}
+                Ok(removed) => tracing::info!(removed, "expired HTTP cache entries purged"),
+                Err(error) => tracing::error!(%error, "could not purge the HTTP cache"),
+            }
+        }
         let claimed = tokio::select! {
             () = &mut shutdown => return,
             claimed = claim(&pool) => claimed,
@@ -111,7 +122,7 @@ pub async fn run(pool: PgPool, github: GitHub, interval: Duration, shutdown: imp
             Ok(Some(scan)) => {
                 tracing::info!(scan = %scan.id, seed = %scan.seed, attempt = scan.attempts, "scan claimed");
                 tokio::select! {
-                    result = execute(&pool, &github, &scan, interval) => {
+                    result = execute(&pool, &github, &scan, settings) => {
                         if let Err(error) = result {
                             tracing::error!(scan = %scan.id, %error, "could not record scan result");
                         }

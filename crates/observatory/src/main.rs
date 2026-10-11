@@ -10,7 +10,7 @@ use anyhow::Context;
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use observatory::api::{self, AppState};
-use observatory::collector::GitHub;
+use observatory::collector::{GitHub, Settings, budget};
 use observatory::config::{ApiConfig, secret, var_or};
 use observatory::db::{DbSettings, pool, tune};
 use observatory::legacy::{ImportRequest, import_snapshot};
@@ -36,6 +36,9 @@ enum Command {
     Serve,
     /// Exécute les scans GitHub en file (rôle applicatif PostgreSQL).
     Worker,
+    /// Affiche les quotas GitHub de l'accès du worker, le rythme partagé et le cache
+    /// (rôle applicatif PostgreSQL ; `GET /rate_limit` n'est pas décompté).
+    GithubStatus,
     /// Applique les migrations et les droits du rôle applicatif (rôle administrateur PostgreSQL).
     Migrate {
         /// Vérifie seulement que le schéma est à jour.
@@ -122,8 +125,16 @@ async fn run(command: Command) -> anyhow::Result<()> {
             let pool = pool(settings.options(), 4).await.context("connexion PostgreSQL")?;
             migrate::verify(&pool).await?;
             let github = GitHub::new(&secret("GITHUB_TOKEN")?)?;
-            tracing::info!("worker started");
-            worker::run(pool, github, Duration::from_secs(1), shutdown_signal()).await;
+            let collect = Settings::from_env()?;
+            tracing::info!(settings = ?collect, authenticated = github.authenticated(), "worker started");
+            worker::run(pool, github, collect, shutdown_signal()).await;
+            Ok(())
+        }
+        Command::GithubStatus => {
+            let pool = pool(settings.options(), 1).await.context("connexion PostgreSQL")?;
+            migrate::verify(&pool).await?;
+            let github = GitHub::new(&secret("GITHUB_TOKEN")?)?;
+            println!("{}", budget::status(&pool, &github).await?);
             Ok(())
         }
         Command::Migrate { check } => {

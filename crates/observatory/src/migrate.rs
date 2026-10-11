@@ -23,6 +23,11 @@ pub struct Migration {
 pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 1, name: "initial", sql: include_str!("../../../migrations/0001_initial.sql") },
     Migration { version: 2, name: "hardening", sql: include_str!("../../../migrations/0002_hardening.sql") },
+    Migration {
+        version: 3,
+        name: "collecte_econome",
+        sql: include_str!("../../../migrations/0003_collecte_econome.sql"),
+    },
 ];
 
 pub fn latest() -> i32 {

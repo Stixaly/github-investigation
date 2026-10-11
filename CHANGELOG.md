@@ -2,6 +2,25 @@
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Ajouté
+
+- Collecte économe en quota GitHub, migration 0003 ([ADR 0005](docs/adr/0005-collecte-econome.md)) :
+  - rythme partagé par ressource de quota, réglé sur les en-têtes `x-ratelimit-*` ;
+  - requêtes conditionnelles (ETag) et cache HTTP cloisonné par identité d'accès, avec fenêtre de fraîcheur et purge ;
+  - reprise d'un scan interrompu à sa page suivante ;
+  - deux nouvelles tentatives au plus après une erreur réseau ou 5xx ;
+  - compteurs `stats` dans la couverture de chaque scan.
+- Commande `observatory github-status` : quotas de l'accès du worker, rythme partagé et cache, sans consommer de requête.
+- Variables facultatives `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+
+### Modifié
+
+- Pages de 100 éléments au lieu de 50 : deux fois plus de relations pour le même nombre de requêtes.
+- Écart minimal entre deux requêtes ramené d'une seconde à 250 ms ; le rythme suit désormais l'état annoncé par GitHub.
+- Une réponse 304 authentifiée n'est plus comptée dans le budget du scan.
+
 ## [0.2.0] — 2026-10-11
 
 ### Modifié
