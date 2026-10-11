@@ -31,7 +31,7 @@ serde = { version = "1", features = ["derive"] }
 # into a number (found by fuzz/fuzz_targets/canonical.rs, see ADR 0002).
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
+sqlx = { version = "0.9", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
