@@ -1,0 +1,50 @@
+name: Fuzzing
+
+# Coverage-guided fuzzing (cargo-fuzz / libFuzzer) of the code that reads input
+# controlled by someone else: seeds typed by analysts, GitHub `Link` headers,
+# JSON evidence and historical snapshots. 60 s per target on pull requests,
+# 10 minutes in the weekly run. A crash, a broken invariant or a timeout fails
+# the job and uploads the input; add it to fuzz/seeds/<target>/ once fixed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "11 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [seed, pagination, canonical, snapshot]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Nightly toolchain and cargo-fuzz
+        run: |
+          rustup toolchain install nightly --profile minimal
+          cargo install cargo-fuzz --locked --version 0.13.2
+      - name: Fuzz
+        working-directory: fuzz
+        env:
+          TARGET: ${{ matrix.target }}
+          SECONDS_PER_TARGET: ${{ github.event_name == 'schedule' && '600' || '60' }}
+        run: |
+          mkdir -p "corpus/$TARGET"
+          cargo +nightly fuzz run "$TARGET" "corpus/$TARGET" "seeds/$TARGET" -- \
+            -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -rss_limit_mb=2048
+      - name: Upload the failing input
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: fuzz/artifacts
+          retention-days: 14

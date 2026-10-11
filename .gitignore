@@ -1,13 +1,21 @@
+# Local configuration and secrets (scripts/setup.sh creates them).
 .env
 .secrets/
 .local/
-__pycache__/
-*.pyc
-.pytest_cache/
-.ruff_cache/
+
+# Build outputs.
+/target/
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
 node_modules/
 frontend/dist/
+frontend/coverage/
+*.profraw
+lcov.info
+
+# Historical data of the former ctimap-tool: never published.
 ctimap-tool/
+
 *.log
 *.dump
-

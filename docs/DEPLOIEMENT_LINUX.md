@@ -17,7 +17,7 @@ Placer le code dans un répertoire appartenant au compte de déploiement, puis :
 ```sh
 sh scripts/setup.sh
 docker compose up --build -d --wait
-docker compose exec api python -m investigator.cli create-user analyste
+docker compose exec api observatory create-user analyste
 ```
 
 Le script génère deux secrets indépendants pour PostgreSQL et ne remplace aucun secret existant. La migration démarre avant l'API et le worker. Le rôle applicatif `investigator` n'a pas les droits de création du schéma ; le service ponctuel `migrate` dispose des identifiants administrateur.
@@ -66,7 +66,7 @@ Conserver **les deux fichiers Compose** dans les commandes d'exploitation HTTPS.
 docker compose -f compose.yaml -f compose.tls.yaml up -d --force-recreate gateway
 ```
 
-L'API utilise `PUBLIC_ORIGIN` pour le cookie Secure, la vérification d'origine et HSTS. Elle n'accorde pas sa confiance aux en-têtes de proxy envoyés par un client. Le proxy limite les corps HTTP à 64 Kio et les tentatives de connexion par IP ; l'API limite aussi les échecs par identifiant.
+L'API utilise `PUBLIC_ORIGIN` pour le cookie Secure, la vérification d'origine et HSTS. Le proxy limite les corps HTTP à 64 Kio et les tentatives de connexion par IP. Il remplace l'en-tête `X-Real-IP` envoyé par le client par l'adresse réelle ; `compose.tls.yaml` active `TRUST_PROXY_HEADERS` pour que l'API compte les échecs de connexion par poste : 5 échecs en 15 minutes bloquent ce poste pour ce compte, 30 échecs tous postes confondus bloquent le compte. Sans `compose.tls.yaml`, l'API ignore cet en-tête. Un utilisateur du serveur lui-même peut atteindre le port local 8088 et usurper l'en-tête ; le plafond global par compte s'applique quand même (voir [ADR 0004](adr/0004-limitation-des-echecs-de-connexion.md)).
 
 Le certificat autosigné éventuellement présent dans l'environnement local de validation est temporaire et doit être remplacé pour un serveur d'équipe.
 
@@ -91,8 +91,8 @@ Un scan peut être partiel même avec un statut terminal normal : consulter sa c
 Créer les comptes localement ; le responsable d'un dossier ajoute ensuite les membres depuis l'onglet Accès :
 
 ```sh
-docker compose exec api python -m investigator.cli create-user autre-analyste
-docker compose exec api python -m investigator.cli demo --login analyste
+docker compose exec api observatory create-user autre-analyste
+docker compose exec api observatory demo --login analyste
 ```
 
 Pour importer un snapshot, créer d'abord une investigation dans l'interface et récupérer son UUID via la réponse API ou la liste authentifiée `/api/v1/investigations`. Monter uniquement le répertoire choisi, en lecture seule :
@@ -100,7 +100,7 @@ Pour importer un snapshot, créer d'abord une investigation dans l'interface et 
 ```sh
 docker compose run --rm \
   -v /chemin/absolu/vers/snapshot:/legacy:ro \
-  api python -m investigator.cli import-legacy /legacy \
+  api import-legacy /legacy \
   --investigation UUID_DU_DOSSIER --login analyste --observed-date 2026-07-19
 ```
 
@@ -132,6 +132,18 @@ curl --fail http://localhost:8088/ready
 
 ## 7. Mettre à jour
 
-Sauvegarder et vérifier les notes de migration avant de reconstruire. La version initiale du schéma est vérifiée par SHA-256 : modifier `schema.sql` après son application est refusé. Toute évolution du modèle devra passer par une migration supplémentaire et un test d'upgrade.
+Sauvegarder (section 6) et lire le [CHANGELOG](../CHANGELOG.md) avant de reconstruire :
 
-Les images de base sont fixées par digest, Python utilise des locks avec hashes et npm un lock exact. Une mise à jour de sécurité nécessite donc une modification explicite et les validations de contribution. Le fait d'utiliser Alpine, un UID non root et un système de fichiers en lecture seule ne remplace pas l'analyse des vulnérabilités des images.
+```sh
+git pull
+docker compose up --build -d --wait
+docker compose run --rm migrate migrate --check
+```
+
+Le service ponctuel `migrate` applique les migrations numérotées de `migrations/` avant le démarrage de l'API et du worker. Chaque migration appliquée est vérifiée par SHA-256 : un fichier modifié après application, ou une base plus récente que le binaire, bloque le démarrage au lieu de laisser l'application lire un schéma inattendu (voir [ADR 0003](adr/0003-migrations-versionnees.md)).
+
+### Depuis la 0.1 (backend Python)
+
+La base 0.1 est reprise telle quelle : sa migration 1 est reconnue par son empreinte, puis la migration 2 est appliquée (index, compteur d'échecs par poste, dédoublonnage des observations). Les comptes, mots de passe et sessions ouvertes restent valides. Les preuves déjà enregistrées gardent leur empreinte : une même réponse GitHub observée avant et après la mise à jour n'est stockée qu'une fois. Les commandes d'administration deviennent `observatory <commande>` au lieu de `python -m investigator.cli <commande>`.
+
+Les images de base sont fixées par digest, Cargo compile avec `--locked` à partir de `Cargo.lock` et npm installe un lock exact. La CI contrôle les dépendances (cargo-deny, npm audit, Dependabot). Une mise à jour de sécurité nécessite donc une modification explicite et les validations de contribution. Le fait d'utiliser Alpine, un UID non root et un système de fichiers en lecture seule ne remplace pas l'analyse des vulnérabilités des images.

@@ -8,18 +8,18 @@ Cet inventaire repose sur la lecture des sources, des documents, des structures 
 
 | Élément | Apport au nouveau projet |
 |---|---|
-| [README historique](../ctimap-tool/README.md) | Objectif CTI, organisation des snapshots et rapports, limites de couverture |
-| [Changelog](../ctimap-tool/CHANGELOG.md) | Évolution des rôles, collecte des événements et mentions, résultats déclarés |
-| [Guide](../ctimap-tool/ctimap-tool/GUIDE.md) | Exploitation, reprise, scoring, limites connues |
-| [Présentation historique](../ctimap-tool/CTI-methodology-findings.pptx) | Principes méthodologiques, résultats et biais ; texte des 14 diapositives consulté |
-| [Client GitHub](../ctimap-tool/ctimap-tool/ctimap/client.py) | Pagination, retries, limites d'API, lecture du token par environnement |
-| [Collecteur](../ctimap-tool/ctimap-tool/ctimap/collect.py) | Rôles, profils, dépôts par compte et checkpoints |
-| [Fusion](../ctimap-tool/ctimap-tool/ctimap/merge.py) | Union des rôles et remplacement des profils/listes par source prioritaire |
-| [Scoring](../ctimap-tool/ctimap-tool/ctimap/score.py) | Score lexical explicable, poids, pénalités, tiers |
-| [Rapprochement](../ctimap-tool/ctimap-tool/ctimap/crossref.py) | Heuristique de spécificité des pseudonymes |
-| [Lexique](../ctimap-tool/ctimap-tool/ctimap/keywords.yaml) et `harvest.py` | Ressources et méthodes multilingues à reprendre après validation |
-| [Provenance de la fusion](../ctimap-tool/data/corpus-a-merged/provenance.json) | Sources, tailles des rôles, dates déclarées ou issues du mtime |
-| [Rapport agrégé du corpus A](../ctimap-tool/reports/corpus-a-full/aggregated_report.md) | Présentation du double signal et réserve sur l'identification |
+| README historique (`ctimap-tool/README.md`, hors dépôt) | Objectif CTI, organisation des snapshots et rapports, limites de couverture |
+| Changelog (`ctimap-tool/CHANGELOG.md`, hors dépôt) | Évolution des rôles, collecte des événements et mentions, résultats déclarés |
+| Guide (`GUIDE.md`, hors dépôt) | Exploitation, reprise, scoring, limites connues |
+| Présentation historique (`ctimap-tool/CTI-methodology-findings.pptx`, hors dépôt) | Principes méthodologiques, résultats et biais ; texte des 14 diapositives consulté |
+| Client GitHub (`ctimap/client.py`, hors dépôt) | Pagination, retries, limites d'API, lecture du token par environnement |
+| Collecteur (`ctimap/collect.py`, hors dépôt) | Rôles, profils, dépôts par compte et checkpoints |
+| Fusion (`ctimap/merge.py`, hors dépôt) | Union des rôles et remplacement des profils/listes par source prioritaire |
+| Scoring (`ctimap/score.py`, hors dépôt) | Score lexical explicable, poids, pénalités, tiers |
+| Rapprochement (`ctimap/crossref.py`, hors dépôt) | Heuristique de spécificité des pseudonymes |
+| Lexique (`ctimap/keywords.yaml`, hors dépôt) et `harvest.py` | Ressources et méthodes multilingues à reprendre après validation |
+| Provenance de la fusion (`ctimap-tool/data/corpus-a-merged/provenance.json`, hors dépôt) | Sources, tailles des rôles, dates déclarées ou issues du mtime |
+| Rapport agrégé du corpus A (`ctimap-tool/reports/corpus-a-full/aggregated_report.md`, hors dépôt) | Présentation du double signal et réserve sur l'identification |
 
 Aucun dépôt Git n'a été détecté à la racine de l'espace de travail ni dans `ctimap-tool/`. L'historique consultable ici est documentaire et constitué de snapshots ; aucune chronologie de commits n'a été établie.
 

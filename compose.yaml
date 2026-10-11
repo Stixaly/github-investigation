@@ -56,18 +56,19 @@ services:
       DB_PASSWORD_FILE: /run/secrets/db_admin
       APP_PASSWORD_FILE: /run/secrets/db_app
     secrets: [db_admin, db_app]
-    command: [python, -m, investigator.migrate]
+    command: [migrate]
     depends_on:
       postgres: {condition: service_healthy}
 
   api:
     <<: *app
+    command: [serve]
     ports: ["${BIND_ADDRESS:-127.0.0.1}:${PORT:-8088}:8000"]
     networks: [backend, frontend]
     depends_on:
       migrate: {condition: service_completed_successfully}
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2)"]
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8000/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -75,7 +76,7 @@ services:
 
   worker:
     <<: *app
-    command: [python, -m, investigator.worker]
+    command: [worker]
     environment:
       <<: *environment
       GITHUB_TOKEN_FILE: /run/secrets/github_token
@@ -83,35 +84,34 @@ services:
     networks: [backend, egress]
     depends_on:
       migrate: {condition: service_completed_successfully}
+    stop_grace_period: 20s
     restart: unless-stopped
 
+  # `make test`: Rust integration tests against a throwaway PostgreSQL.
   test:
-    <<: *app
     profiles: [test]
     image: github-investigation:test
-    build: {context: ., target: dev}
+    build: {context: ., target: test}
+    user: "0:0"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [backend]
     environment:
-      <<: *environment
-      DB_HOST: test-postgres
-      DB_USER: postgres
-      DB_PASSWORD: ephemeral-tests-only
-      DB_PASSWORD_FILE: ""
-      APP_PASSWORD: ephemeral-tests-only
-    secrets: []
+      TEST_DATABASE_URL: postgres://postgres:ephemeral-tests-only@test-postgres:5432/postgres
+      REQUIRE_DB_TESTS: "1"
+      RUST_LOG: warn
     depends_on:
       test-postgres: {condition: service_healthy}
-    command: [sh, -c, "python -m investigator.migrate && python -m pytest -p no:cacheprovider && ruff check --no-cache ."]
 
   test-postgres:
     profiles: [test]
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
-      POSTGRES_DB: investigation
       POSTGRES_PASSWORD: ephemeral-tests-only
     tmpfs: [/var/lib/postgresql, /var/run/postgresql]
     networks: [backend]
     healthcheck:
-      test: [CMD-SHELL, "pg_isready -U postgres -d investigation"]
+      test: [CMD-SHELL, "pg_isready -U postgres"]
       interval: 2s
       retries: 20
 

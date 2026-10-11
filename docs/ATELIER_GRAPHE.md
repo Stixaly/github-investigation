@@ -17,7 +17,7 @@ L'exploration reprend les principes de la capture EclecticIQ fournie : entités 
 
 ## Portée
 
-Les changements portent sur le frontend React : `3d-force-graph` 1.80.1, Three.js 0.186.1, `three-spritetext` 1.10.0 et Cytoscape 3.34.3. Le module 3D est chargé à la demande dans un fichier JavaScript séparé. Les bibliothèques sont intégrées au build local, sans CDN. La simulation travaille sur des copies des entités pour ne pas modifier les observations de l'API. Les textes issus de GitHub sont affichés comme du texte, y compris dans les infobulles.
+Les changements portent sur le frontend React : `3d-force-graph` 1.80.1, Three.js 0.186.1, `three-spritetext` 1.10.0 et Cytoscape 3.34.3. Le module 3D et, depuis la 0.2, Cytoscape sont chargés à la demande dans des fichiers JavaScript séparés ; le code de l'atelier est dans `frontend/src/graph/` (`Graph.tsx`, `force3d.ts`, `model.ts` testé par Vitest). Les bibliothèques sont intégrées au build local, sans CDN. La simulation travaille sur des copies des entités pour ne pas modifier les observations de l'API. Les textes issus de GitHub sont affichés comme du texte, y compris dans les infobulles.
 
 Le rendu 3D se fait dans le navigateur de l'analyste : le serveur ne nécessite pas de GPU ni de service supplémentaire. Les conteneurs restent Alpine. Le stockage, les quotas et les droits restent ceux du socle. La vue reste limitée au scan choisi et au sous-graphe renvoyé par l'API ; l'apparence de l'atelier ne garantit pas l'exhaustivité des relations.
 

@@ -9,8 +9,8 @@ mkdir -p .secrets
 chmod 700 .secrets
 for name in db_admin db_app; do
     if [ ! -s ".secrets/$name" ]; then
-        docker run --rm python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a \
-            python -c 'import secrets; print(secrets.token_hex(32))' > ".secrets/$name"
+        # 32 random bytes, hex encoded, from the host kernel.
+        od -An -vtx1 -N32 /dev/urandom | tr -d ' \n' > ".secrets/$name"
     fi
     # Compose binds individual files: readable in the container; parent is private on host.
     chmod 444 ".secrets/$name"
@@ -20,6 +20,6 @@ if [ ! -f .secrets/github_token ]; then
 fi
 chmod 444 .secrets/github_token
 if [ ! -f .env ]; then
-    printf '%s\n' 'BIND_ADDRESS=127.0.0.1' 'PORT=8088' 'PUBLIC_ORIGIN=http://localhost:8088' > .env
+    cp .env.example .env
 fi
-printf '%s\n' 'Configuration prête. Prochaine étape : docker compose up --build -d'
+printf '%s\n' 'Configuration prête. Prochaine étape : docker compose up --build -d --wait'

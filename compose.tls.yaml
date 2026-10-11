@@ -1,4 +1,9 @@
 services:
+  api:
+    environment:
+      # The gateway sets X-Real-IP; failed logins are then counted per analyst workstation.
+      TRUST_PROXY_HEADERS: "1"
+
   gateway:
     image: nginxinc/nginx-unprivileged:1.31-alpine@sha256:b9241c6e7b8e9a862f129d8d4199ab64b10390949a78bdd5603379b32c844083
     user: "101:101"

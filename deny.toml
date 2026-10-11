@@ -1,0 +1,37 @@
+# cargo-deny: known vulnerabilities, licences and origins of the Rust
+# dependencies. CI runs `cargo deny --locked check`; an exception goes here
+# with its reason and in SECURITY.md.
+
+[graph]
+all-features = false
+
+[advisories]
+# RustSec advisories, including unmaintained crates and yanked versions.
+yanked = "deny"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+# Permissive licences compatible with distributing the project under Apache-2.0.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# The fuzz and test crates are excluded from publication; path dependencies are ours.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

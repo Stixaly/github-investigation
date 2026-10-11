@@ -1,8 +1,8 @@
 # Observatory — ce qu'il reste à construire
 
-**État de référence : 11 octobre 2026, après livraison du graphe 3D/2D.**
+**État de référence : 11 octobre 2026, après livraison du graphe 3D/2D.** Mise à jour 0.2 (même jour) : backend converti en Rust ([ADR 0002](adr/0002-backend-rust.md)), migrations numérotées ([ADR 0003](adr/0003-migrations-versionnees.md)) et CI GitHub complète. Les contrats décrits ici sont inchangés ; les estimations restent exprimées en charge, indépendamment du langage.
 
-Ce document transforme les besoins du projet en travaux d'implémentation. Il distingue les fonctions présentes, les améliorations nécessaires au pilote d'équipe et les extensions intéressantes. Il complète le [cadrage initial](PROJET_INVESTIGATION_GITHUB.md), l'[état livré](IMPLEMENTATION_V0_1.md) et le [guide du graphe](ATELIER_GRAPHE.md). Pour décider des prochains lots, utiliser cette feuille de route plutôt que les estimations initiales faites avant développement.
+Ce document transforme les besoins du projet en travaux d'implémentation. Il distingue les fonctions présentes, les améliorations nécessaires au pilote d'équipe et les extensions intéressantes. Il complète le [cadrage initial](PROJET_INVESTIGATION_GITHUB.md), l'[état livré](IMPLEMENTATION.md) et le [guide du graphe](ATELIER_GRAPHE.md). Pour décider des prochains lots, utiliser cette feuille de route plutôt que les estimations initiales faites avant développement.
 
 **Recommandation : construire d'abord la chaîne « mots-clés → résultats expliqués → triage → investigation → suivi ».** Elle apportera davantage à l'analyste qu'un nouveau changement de moteur graphique. La reprise des collectes, les droits et les migrations doivent progresser avec cette chaîne.
 
@@ -35,7 +35,7 @@ flowchart LR
 
 ## 2. Inventaire des écarts
 
-L'inventaire est fondé sur la lecture de `investigator/`, du schéma, des tests, du frontend et des documents locaux. Il ne constitue pas un audit de sécurité ni un nouveau test de charge.
+L'inventaire a été établi sur le socle Python 0.1 (`investigator/`, dont la 0.2 reprend les contrats en Rust), à partir du schéma, des tests, du frontend et des documents locaux. Il ne constitue pas un audit de sécurité ni un nouveau test de charge.
 
 | Domaine | Présent dans le code | Travail restant |
 |---|---|---|
@@ -52,11 +52,11 @@ L'inventaire est fondé sur la lecture de `investigator/`, du schéma, des tests
 | Diffusion | Capture PNG | Rapport avec preuves, export JSON/CSV contrôlé, échanges CTIParsor |
 | Authentification | Comptes CLI, sessions, Argon2, CSRF | Administration des comptes, récupération, désactivation, SSO/MFA |
 | Exploitation | Compose Alpine, ressources limitées, proxy TLS optionnel | Restaurations exercées, supervision, rétention, qualification 20 analystes et trois OS |
-| Livraison | Locks, digests, pytest/Ruff, build TypeScript, E2E local | Migrations successives, contrôles frontend, CI E2E, release et dépôt GitHub |
+| Livraison | Locks, digests, rustfmt/clippy, tests PostgreSQL avec couverture, migrations successives, ESLint/Vitest, CI GitHub avec E2E, fuzzing et CodeQL | Release, SBOM et signature des images, protection de branche |
 
 Limites actuelles à conserver visibles : deux pages de 50 objets par endpoint du profil ; budget de 1 à 50 requêtes par scan ; graphe de 300 nœuds par défaut, plafonné à 500 nœuds et 2 000 liens ; listes limitées à 200 dossiers et 100 scans/notes. Plusieurs milliers de dépôts stockés ne doivent pas signifier plusieurs milliers de nœuds envoyés automatiquement au navigateur.
 
-**Point technique préalable :** `migrate.py` sait actuellement créer/vérifier une unique version 1 avec checksum ; l'API exige aussi cette version. Il faut ajouter une vraie séquence de migrations avant les nouvelles tables, sans modifier le `schema.sql` déjà appliqué. Un mécanisme de version existe, mais l'upgrade v1→v2 n'est pas encore livré.
+**Point technique préalable, traité en 0.2 :** les migrations sont numérotées et vérifiées par empreinte, avec un test d'upgrade depuis la 0.1 et depuis le commit de base en CI ([ADR 0003](adr/0003-migrations-versionnees.md)). Les nouvelles tables de cette feuille de route s'ajoutent par migrations successives.
 
 ## 3. Priorités
 
@@ -202,7 +202,7 @@ Les compteurs de stars, les événements observés et une liste de personnes rep
 
 Ajouter un objet de surveillance attaché à une cible et un dossier : profil, fréquence, priorité, fraîcheur souhaitée, prochain passage, budget et état actif/en pause. Un même dépôt peut être ponctuel dans un dossier et suivi dans un autre.
 
-Le scheduler peut rester un processus Python Alpine utilisant la file PostgreSQL. Il doit empêcher les doublons de créneau, répartir les requêtes, survivre à un redémarrage et ne pas rejouer une semaine entière de scans manqués sans plafond. Les calendriers sont stockés en UTC et affichés dans le fuseau de l'utilisateur.
+Le scheduler peut être un rôle supplémentaire du binaire `observatory`, sous Alpine, utilisant la file PostgreSQL. Il doit empêcher les doublons de créneau, répartir les requêtes, survivre à un redémarrage et ne pas rejouer une semaine entière de scans manqués sans plafond. Les calendriers sont stockés en UTC et affichés dans le fuseau de l'utilisateur.
 
 Alertes utiles : nouveau match, nouvelle relation dans le profil suivi, README modifié, renommage/transfert, nouvelle release ou changement important d'activité. Distinguer une alerte métier d'une collecte devenue partielle ou en erreur.
 
@@ -498,7 +498,7 @@ Ces propositions permettent de commencer R0/R1 sans exiger une décision sur tou
 
 ## 19. Références et limites de cette feuille de route
 
-Sources locales examinées : `investigator/api.py`, `collector.py`, `store.py`, `schema.sql`, `migrate.py`, `db.py`, `security.py`, `worker.py`, tests, Compose et documentation. Les validations déjà exécutées sont décrites dans l'[état livré](IMPLEMENTATION_V0_1.md) et l'[atelier graphe](ATELIER_GRAPHE.md) ; elles ne sont pas revendiquées pour les fonctions encore proposées.
+Sources locales examinées (socle 0.1) : `investigator/api.py`, `collector.py`, `store.py`, `schema.sql`, `migrate.py`, `db.py`, `security.py`, `worker.py`, tests, Compose et documentation ; leurs équivalents 0.2 sont dans `crates/observatory/src/`. Les validations déjà exécutées sont décrites dans l'[état livré](IMPLEMENTATION.md) et l'[atelier graphe](ATELIER_GRAPHE.md) ; elles ne sont pas revendiquées pour les fonctions encore proposées.
 
 Les pages officielles GitHub et PostgreSQL sont liées près des décisions concernées et ont été consultées le 11 octobre 2026. Les capacités d'API doivent être retestées au moment de développer chaque connecteur avec la version et les droits retenus. Les pratiques de développement reprises de CTIParsor sont documentées dans l'[alignement local](ALIGNEMENT_CTIPARSOR.md).
 

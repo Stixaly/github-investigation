@@ -1,6 +1,8 @@
 # Plateforme d'investigation GitHub
 
-> Un premier socle est désormais implémenté. Consulter l'[état livré et les validations](IMPLEMENTATION_V0_1.md) et le [guide Linux](DEPLOIEMENT_LINUX.md). Le présent document reste le cadrage initial de la cible. Pour les prochains lots et les estimations du travail restant après livraison du graphe 3D/2D, utiliser la [feuille de route actualisée](FEUILLE_DE_ROUTE_INVESTIGATION.md), qui inclut les listes de mots-clés configurables.
+> Depuis la 0.2, le backend proposé ici en Python est écrit en Rust ([ADR 0002](adr/0002-backend-rust.md)) ; le reste de l'architecture cible est inchangé. Les mentions de FastAPI, Ruff, mypy ou pytest ci-dessous décrivent le cadrage initial.
+>
+> Un premier socle est désormais implémenté. Consulter l'[état livré et les validations](IMPLEMENTATION.md) et le [guide Linux](DEPLOIEMENT_LINUX.md). Le présent document reste le cadrage initial de la cible. Pour les prochains lots et les estimations du travail restant après livraison du graphe 3D/2D, utiliser la [feuille de route actualisée](FEUILLE_DE_ROUTE_INVESTIGATION.md), qui inclut les listes de mots-clés configurables.
 
 **Cadrage, architecture et feuille de route d'implémentation — version 0.1, 11 octobre 2026**
 

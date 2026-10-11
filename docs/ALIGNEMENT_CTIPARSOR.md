@@ -1,65 +1,51 @@
 # Alignement avec les méthodes de CTIParsor
 
-Lecture du checkout local le **11 octobre 2026**, révision courte observée : `dcd685e`. Aucun fichier de CTIParsor modifié ; tests et réglages GitHub distants non vérifiés pendant cette lecture.
+CTIParsor est l'outil d'extraction CTI de la même équipe. Ses pratiques de développement servent de référence à ce projet, adaptées à deux contraintes propres : **Alpine sur tous les services** et un backend **Rust** depuis la 0.2 ([ADR 0002](adr/0002-backend-rust.md)).
 
-L'objectif est de reprendre les méthodes adaptées au nouveau produit, en respectant sa contrainte **Alpine sur tous les services** et son périmètre de 20 analystes.
+Première lecture : checkout local de CTIParsor du 11 octobre 2026 (révision `dcd685e`). Mise à jour le même jour, lors de la revue qui a conduit à la 0.2 (révision `59bf56f`). Les réglages GitHub distants de CTIParsor n'ont pas été vérifiés.
 
-## 1. Pratiques observées et adaptation
+## 1. Pratiques reprises
 
-| Dans CTIParsor | Pour la plateforme GitHub |
-|---|---|
-| Développement documenté sous Docker uniquement | Même principe ; images dev et runtime Alpine |
-| API FastAPI et frontend React/TypeScript | Stack familière proposée pour limiter le coût de maintenance |
-| API, worker et file PostgreSQL séparés | Séparer collecte, analytics et HTTP ; conserver une file PostgreSQL initiale |
-| Lease, heartbeat et reprise de jobs | Ajouter contrat d'idempotence, génération de lease et mutualisation entre investigations |
-| PostgreSQL 18 Alpine dans Compose | PostgreSQL Alpine ; résoudre version/digest pendant la fondation |
-| ADR et documentation de référence | Une décision explicite pour temps, graphe, ACL, Alpine et quotas |
-| Ruff, mypy, pytest ; ESLint, TypeScript, Vitest | Même famille de contrôles ; tests métier propres à ce projet |
-| Couverture de branches avec plancher global de 87 % | Référence méthodologique ; seuil du nouveau projet établi sur ses risques et son premier lot |
-| Tests PostgreSQL isolés, chemins temporaires, services externes simulés | API GitHub simulée, aucun token requis pour développer ou tester |
-| Locks Python avec hashes et images épinglées | Même discipline pour les dépendances Alpine et frontend |
-| Workflows CI, CodeQL et fuzzing | Contrôles bloquants, fuzzing ciblé sur formats/imports et parsing d'URLs |
-| Contrôles de chaîne de livraison, SBOM et attestations documentés | Vérifier les livrables publiés et leur origine ; tester leur base Alpine |
-| Migrations numérotées avec historique et vérification | Même objectif, rôle de migration dédié et tests d'upgrade avant rollout |
-| Distinction des preuves, inférences et décisions de revue | Observations GitHub, liens dérivés, hypothèses et validations séparés |
+| Dans CTIParsor | Dans ce projet (0.2) | État |
+|---|---|---|
+| Développement documenté sous Docker | Tests et images sous Alpine (`make test`), mêmes contrôles en local (`make check`) | Fait |
+| Travail par branche et pull request, CI bloquante (ADR-0071) | Dépôt Git, CI bloquante sur chaque PR, aucune vérification déterministe en simple avertissement | Fait ; protection de `main` à activer sur GitHub |
+| API, worker et file PostgreSQL séparés | Binaire unique, conteneurs `api`, `worker` et `migrate` distincts, file `SKIP LOCKED` | Fait |
+| Lease, heartbeat et reprise de jobs | Lease prolongé à chaque étape, génération de fencing, remise en file à l'arrêt du worker | Fait |
+| Ruff (E, F, W, I, S, B), mypy | rustfmt, clippy `all` + `pedantic` sans avertissement, `unsafe` interdit, typage du compilateur | Fait (équivalent Rust) |
+| ESLint, TypeScript, Vitest | ESLint (`typescript-eslint` + hooks React), TypeScript strict, Vitest/Testing Library, mêmes versions d'outils | Fait |
+| Couverture de branches, plancher global de 87 % | Couverture de lignes avec `cargo llvm-cov`, plancher en CI fixé juste sous la mesure | Fait ; couverture de branches Rust encore instable dans l'outillage |
+| Tests PostgreSQL isolés, services externes simulés | Une base par test, rôle applicatif restreint, API GitHub simulée par wiremock | Fait |
+| Locks avec hashes (ADR-0080), images épinglées | `Cargo.lock` et `--locked`, lock npm exact, images par digest | Fait |
+| pip-audit, npm audit, dependency review | cargo-deny (vulnérabilités, licences, sources), npm audit, dependency review, Dependabot | Fait |
+| CodeQL et fuzzing des analyseurs exposés (ADR-0081) | CodeQL Rust/TypeScript/workflows ; cargo-fuzz sur seeds, en-têtes `Link`, JSON canonique et instantanés | Fait ; le fuzzing a déjà trouvé une perte de précision numérique |
+| Migrations versionnées et test depuis le commit de base (ADR-0077) | Migrations numérotées par empreinte, `scripts/check-migration-from-base.sh` en CI | Fait ([ADR 0003](adr/0003-migrations-versionnees.md)) |
+| ADR, SECURITY.md, CHANGELOG, licence | ADR 0001 à 0004, `SECURITY.md`, `CHANGELOG.md`, Apache-2.0 | Fait |
+| SBOM, attestations, publication d'image | — | À faire lors de la première publication d'image |
+| OpenSSF Scorecard | — | À activer si le dépôt devient public |
 
-## 2. Écarts à ne pas recopier
+## 2. Écarts volontaires
 
-### Les images applicatives CTIParsor ne sont pas Alpine
+### Images Alpine
 
-Le Dockerfile examiné utilise `node:26-bookworm-slim` et `python:3.14-slim-bookworm`. Compose inclut aussi un proxy de capture basé sur Ubuntu. Le nouveau projet ne peut donc pas reprendre ces images telles quelles. Sa pile plus légère peut éviter les dépendances NLP, OCR et navigateurs du runtime CTIParsor.
+Les images applicatives de CTIParsor sont basées sur Debian (`bookworm-slim`). Ce projet n'utilise que des images Alpine ; le binaire Rust est statique (musl), sans interpréteur.
+
+### Prettier pour le frontend
+
+CTIParsor vérifie le style avec `@stylistic/eslint-plugin` pour ne pas réécrire un code déjà aligné à la main. Ici, le frontend 0.1 était écrit sur des lignes de plusieurs milliers de caractères : il a été reformaté une fois par Prettier, qui le vérifie désormais.
+
+### Règles « React Compiler » non activées
+
+Comme CTIParsor, seules les deux règles classiques des hooks sont actives ; l'application n'utilise pas le React Compiler.
 
 ### Authentification et gestion d'équipe
 
-La documentation d'architecture CTIParsor décrit notamment un proxy avec mot de passe partagé. Pour le nouveau produit, il faut des comptes nominatifs, des droits par investigation, la révocation et un audit. Le mécanisme de proxy ne suffit pas à lui seul.
-
-### Migrations : suivre la décision récente
-
-Le guide de contribution contient encore des passages décrivant les anciens tuples DDL idempotents. L'ADR-0077 et `api/migrations/` documentent une histoire versionnée plus récente. La recommandation reprend ce modèle récent, sans recopier les passages devenus incohérents entre documents.
-
-### Charge et types de jobs
-
-Une ingestion de rapport CTI et un crawl de milliers de ressources GitHub n'ont ni le même coût ni les mêmes contraintes. Les plafonds mémoire, la taille des lots et la concurrence doivent être mesurés pour ce projet. La concurrence GitHub est surtout limitée par les droits et quotas, pas uniquement par le nombre de workers.
+La documentation d'architecture de CTIParsor décrit un proxy avec mot de passe partagé. Ce produit exige des comptes nominatifs, des droits par investigation, la révocation et un audit ; le proxy ne suffit pas.
 
 ### STIX et LLM
 
-La nouvelle plateforme n'a pas besoin d'un LLM pour indexer ou explorer ses relations. STIX peut devenir un format d'échange, mais ne remplace pas le modèle natif des scans, stars, forks et preuves GitHub. Ces intégrations nécessiteraient un contrat séparé.
+La plateforme n'a pas besoin d'un LLM pour indexer ou explorer ses relations. STIX pourra devenir un format d'échange, sans remplacer le modèle natif des scans, stars, forks et preuves GitHub. Ces intégrations nécessiteraient un contrat séparé.
 
-## 3. Sources locales vérifiées
+## 3. Références dans CTIParsor
 
-Les liens suivants pointent vers le checkout local de référence ; ils ne constituent pas des dépendances du nouveau dépôt.
-
-- CONTRIBUTING.md (dépôt CTIParsor : `CONTRIBUTING.md`)
-- pyproject.toml (dépôt CTIParsor : `pyproject.toml`)
-- Frontend package.json (dépôt CTIParsor : `frontend/package.json`)
-- Architecture (dépôt CTIParsor : `docs/architecture.md`)
-- Dockerfile (dépôt CTIParsor : `Dockerfile`)
-- Compose (dépôt CTIParsor : `compose.yaml`)
-- Boucle des workers (dépôt CTIParsor : `api/queue_loop.py`)
-- ADR-0077 — migrations versionnées (dépôt CTIParsor : `docs/adr/0077-versioned-database-migrations.md`)
-- ADR-0078 — paramètres du dépôt et workflows (dépôt CTIParsor : `docs/adr/0078-repository-security-settings-and-workflow-hardening.md`)
-- CI (dépôt CTIParsor : `.github/workflows/ci.yml`)
-- CodeQL (dépôt CTIParsor : `.github/workflows/codeql.yml`)
-- Fuzzing (dépôt CTIParsor : `.github/workflows/fuzz.yml`)
-
-Les réglages de protection GitHub décrits par les documents ne sont pas présumés actifs sur le futur dépôt. Leur configuration et leur vérification figurent dans la feuille de route.
+Fichiers consultés dans le dépôt CTIParsor : `CONTRIBUTING.md`, `pyproject.toml`, `frontend/package.json`, `frontend/eslint.config.js`, `docs/architecture.md`, `Dockerfile`, `compose.yaml`, `api/queue_loop.py`, `docs/adr/0071`, `0077`, `0078`, `0080`, `0081`, `.github/workflows/ci.yml`, `codeql.yml`, `fuzz.yml` et `.github/dependabot.yml`.
