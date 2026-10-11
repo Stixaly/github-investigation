@@ -16,7 +16,7 @@ observatory-domain = { path = "crates/observatory-domain" }
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash", "std"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "tracing"] }
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
