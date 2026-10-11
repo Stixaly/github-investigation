@@ -59,7 +59,7 @@ Le jeu de démonstration est fictif. Les données du corpus A servent uniquement
 
 ## Prochain lot proposé
 
-La [feuille de route](FEUILLE_DE_ROUTE_INVESTIGATION.md) détaille et priorise le travail restant (lots R0–R9), en commençant par les listes de mots-clés locales avec résultats expliqués et triage. Chantiers techniques toujours nécessaires :
+La [feuille de route](FEUILLE_DE_ROUTE_INVESTIGATION.md), révisée après la 0.2, détaille et priorise le travail restant (lots R0–R9, backlog REM-01 à REM-31). Elle commence par une restauration testée de la base pilote avant sa montée en 0.2, une file de jobs générique, puis les listes de mots-clés locales avec résultats expliqués et triage ; le cadrage RGPD est lancé en parallèle. Chantiers techniques toujours nécessaires :
 
 1. **Fiabiliser les scans longs** : checkpoint par endpoint/page, ETag, backoff explicite pour erreurs transitoires, reprise sans requêtes déjà consommées, mutualisation de jobs avec ACL indépendantes.
 2. **Suivre les dépôts retenus** : abonnement manuel, calendrier, budget par surveillance et mise en pause.

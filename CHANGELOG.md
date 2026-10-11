@@ -20,6 +20,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 - Seed acceptée sous la forme `github.com/compte/depot`, comme le suggère l'interface.
 - CI GitHub : rustfmt, clippy pedantic, tests d'intégration PostgreSQL avec le rôle restreint et plancher de couverture, test de migration depuis le commit de base, ESLint, Prettier, Vitest, cargo-deny, npm audit, revue des dépendances, images, smoke test et parcours navigateur ; CodeQL (Rust, TypeScript, workflows) ; fuzzing cargo-fuzz ; Dependabot.
 - `LICENSE` (Apache-2.0), `SECURITY.md`, `CHANGELOG.md`, `.env.example`, modèles d'issues et de pull requests.
+- Feuille de route révisée après la 0.2 : file de jobs générique et restauration de la base pilote en R0, cadrage RGPD avant l'ouverture à l'équipe, champs mesurés sur le corpus réel, charges de R5 et R8 relevées, REM-27 à REM-31 ; `scripts/create-backlog-issues.sh` pour créer les issues du backlog.
 
 ### Corrigé
 

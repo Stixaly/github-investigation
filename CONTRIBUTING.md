@@ -9,6 +9,8 @@ Le développement et les tests de référence se font dans des conteneurs Alpine
 3. Ouvrir une pull request : la CI doit être verte, et une décision d'architecture notable s'accompagne d'un ADR dans `docs/adr/`.
 4. Toute modification visible par l'exploitation ou les analystes est notée dans [CHANGELOG.md](CHANGELOG.md).
 
+Le travail restant est décrit dans la [feuille de route](docs/FEUILLE_DE_ROUTE_INVESTIGATION.md) ; son backlog (§15, identifiants `REM-*`) se convertit en issues GitHub avec `sh scripts/create-backlog-issues.sh` (essai préalable : `--dry-run`). Une nouvelle ligne `REM-*` ajoutée au tableau devient une issue au passage suivant.
+
 ## Commandes
 
 | Commande | Effet |
