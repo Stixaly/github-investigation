@@ -52,9 +52,9 @@ fn write_value(out: &mut String, value: &Value, style: Style) {
         Value::Bool(true) => out.push_str("true"),
         Value::Bool(false) => out.push_str("false"),
         Value::Number(number) => {
-            // With `arbitrary_precision`, the number keeps the text GitHub sent.
-            // Python reads an integer literal as an exact int and anything with a
-            // fraction or an exponent as a correctly rounded float.
+            // serde_json keeps integers that fit in 64 bits and reads every other
+            // number as a correctly rounded float (`float_roundtrip`), like Python
+            // except for integers beyond 64 bits, which GitHub never sends.
             let text = number.to_string();
             if text.contains(['.', 'e', 'E']) {
                 out.push_str(&python_float(text.parse().unwrap_or(f64::NAN)));
@@ -220,12 +220,34 @@ mod tests {
     #[test]
     fn numbers_are_read_as_python_reads_them() {
         // json.dumps(json.loads(text), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        let text = r#"{"n": 95546744073709551616, "f": 9.554674407370955e+19, "z": -0, "e": 1E5, "g": 0.1e1, "h": 2.50, "m": -1.5e-7}"#;
+        let text = r#"{"f": 9.554674407370955e+19, "e": 1E5, "g": 0.1e1, "h": 2.50, "m": -1.5e-7, "i": 18446744073709551615}"#;
         let value: Value = serde_json::from_str(text).unwrap();
         assert_eq!(
             to_string(&value, COMPACT),
-            r#"{"e":100000.0,"f":9.554674407370955e+19,"g":1.0,"h":2.5,"m":-1.5e-07,"n":95546744073709551616,"z":0}"#
+            r#"{"e":100000.0,"f":9.554674407370955e+19,"g":1.0,"h":2.5,"i":18446744073709551615,"m":-1.5e-07}"#
         );
+    }
+
+    #[test]
+    fn known_differences_with_python() {
+        // Python keeps an integer beyond 64 bits exact and reads `-0` as the int 0;
+        // serde_json reads both as floats. GitHub sends neither.
+        let value: Value = serde_json::from_str(r#"{"n": 95546744073709551616, "z": -0}"#).unwrap();
+        assert_eq!(to_string(&value, COMPACT), r#"{"n":9.554674407370955e+19,"z":-0.0}"#);
+    }
+
+    #[test]
+    fn serde_private_number_key_is_an_ordinary_key() {
+        // With serde_json's `arbitrary_precision`, an object whose first key is this
+        // marker is read back as a number: the canonical form, which sorts `$` first,
+        // then stopped being valid JSON (found by fuzzing). The feature stays off.
+        let text = r#"{"b":1,"$serde_json::private::Number":-1.0001}"#;
+        let value: Value = serde_json::from_str(text).unwrap();
+        let canonical = to_string(&value, COMPACT);
+        assert_eq!(canonical, r#"{"$serde_json::private::Number":-1.0001,"b":1}"#);
+        let again: Value = serde_json::from_str(&canonical).unwrap();
+        assert_eq!(again, value);
+        assert!(again.is_object());
     }
 
     #[test]

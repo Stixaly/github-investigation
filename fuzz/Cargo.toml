@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 observatory-domain = { path = "../crates/observatory-domain" }
-serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
 
 # Not a member of the main workspace: built with nightly by cargo-fuzz only.
 [workspace]

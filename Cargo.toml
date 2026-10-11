@@ -26,8 +26,10 @@ rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "stream"] }
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
-# Numbers keep their exact text: evidence is stored as GitHub sent it (fuzz/fuzz_targets/canonical.rs).
-serde_json = { version = "1", features = ["arbitrary_precision"] }
+# Floats are parsed with correct rounding, as Python does. Not `arbitrary_precision`:
+# its private number marker turns an object keyed `$serde_json::private::Number`
+# into a number (found by fuzz/fuzz_targets/canonical.rs, see ADR 0002).
+serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
 thiserror = "2"

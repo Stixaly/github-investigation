@@ -24,7 +24,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 
 ### Corrigé
 
-- Les nombres JSON des preuves sont conservés à l'identique, y compris les grands entiers et les flottants (problème trouvé par le fuzzing de la forme canonique).
+- Les flottants des preuves sont lus avec un arrondi exact, comme en Python, et un objet JSON ne peut plus être confondu avec un nombre par serde_json (deux problèmes trouvés par le fuzzing de la forme canonique).
 - Une preuve rattachée seulement à une relation est consultable par les membres de l'investigation.
 - Les caractères `%` et `_` saisis dans le filtre du graphe sont pris littéralement.
 - Les erreurs de validation sont expliquées en français au lieu de « Requête incorrecte ».
