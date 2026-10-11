@@ -311,3 +311,51 @@ async fn the_worker_purges_expired_cache_entries() {
         sqlx::query_scalar("SELECT url FROM http_cache").fetch_all(&db.pool).await.unwrap();
     assert_eq!(urls, ["https://api.github.com/recent"]);
 }
+
+#[tokio::test]
+async fn a_worker_runs_several_scans_at_once() {
+    let Some(db) = database().await else { return };
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let case = client.investigation("Concurrence").await;
+    let server = MockServer::start().await;
+    for (id, name) in [(1, "example"), (9, "other")] {
+        let seed = json!({"id": id, "full_name": format!("alice/{name}"), "owner": {"id": 2, "login": "alice"},
+                          "private": false});
+        // A slow seed keeps both scans in flight together.
+        Mock::given(path(format!("/repos/alice/{name}")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(seed).set_delay(Duration::from_millis(800)),
+            )
+            .mount(&server)
+            .await;
+        for route in ["contributors", "forks", "issues", "events"] {
+            respond(&server, &format!("/repos/alice/{name}/{route}"), json!([])).await;
+        }
+        client.scan(&case, &format!("alice/{name}")).await;
+    }
+    let pool = db.pool.clone();
+    let watched = async move {
+        let status = |status: &'static str| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM scans WHERE status = $1")
+                    .bind(status)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("scan count")
+            }
+        };
+        while status("running").await < 2 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        while status("succeeded").await < 2 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    };
+    let github = GitHub::with_base(&server.uri(), "").unwrap();
+    let settings = Settings { concurrency: 2, ..Settings::IMMEDIATE };
+    tokio::time::timeout(Duration::from_secs(30), run(db.pool.clone(), github, settings, watched))
+        .await
+        .expect("both scans run together, then the worker stops");
+}

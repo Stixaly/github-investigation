@@ -28,9 +28,9 @@ Le backend est un binaire Rust unique, lancé avec des rôles différents dans d
 | Preuves | JSON stocké tel que reçu, nombres compris ; empreinte identique à la 0.1 | Format d'empreinte figé tant qu'aucune colonne de version n'existe |
 | Accès | Responsable, analyste, lecteur ; filtrage des dossiers, preuves et recoupements ; audit des créations, partages, annulations et notes | ACL applicatives ; pas de RLS PostgreSQL ni de multi-tenant |
 | Authentification | Argon2id, cookie HttpOnly/SameSite, CSRF, expiration, échecs limités par poste et par compte | Comptes CLI ; pas de SSO/MFA ni de récupération de mot de passe |
-| Jobs | File PostgreSQL, `SKIP LOCKED`, lease, génération, annulation, remise en file à l'arrêt du worker, reprise à la page suivante | Un worker exécute un scan à la fois |
+| Jobs | File PostgreSQL, `SKIP LOCKED`, lease, génération, annulation, remise en file à l'arrêt du worker, reprise à la page suivante | Jusqu'à 8 scans à la fois par worker (`WORKER_CONCURRENCY`, 2 par défaut), sans équité entre dossiers |
 | GitHub | Rythme partagé par ressource de quota d'après les en-têtes GitHub, requêtes conditionnelles et cache cloisonné par accès, nouvelles tentatives bornées, taille/durée bornées, couverture et compteurs par scan ([ADR 0005](adr/0005-collecte-econome.md)) | Un seul profil de collecte, deux pages de 100 objets par endpoint |
-| Historique | Import JSON en flux, idempotent, date inconnue ou précision au jour | Pickles ignorés, anciennes catégories non reconstruites sans source explicite |
+| Historique | Import JSON en flux, idempotent, écrit par paquets de 1 000 lignes, date inconnue ou précision au jour | Pickles ignorés, anciennes catégories non reconstruites sans source explicite |
 | Schéma | Migrations numérotées vérifiées par empreinte, reprise d'une base 0.1 ([ADR 0003](adr/0003-migrations-versionnees.md)) | Pas encore de procédure de retour arrière automatisée |
 | Interface | Dossiers, graphe 3D/2D, preuves, voisinage, filtres, notes, accès, comparaison | 200 dossiers / 100 scans et notes par liste ; pagination à ajouter |
 | Durcissement | Images Alpine épinglées, binaire statique, non root, lecture seule, capabilities retirées, secrets séparés | Pas encore de SBOM, de signature d'image ni de filtrage egress du serveur |

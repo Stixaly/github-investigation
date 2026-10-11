@@ -112,6 +112,7 @@ La couverture de chaque scan détaille ces effets dans `stats` : requêtes envoy
 | `GITHUB_MIN_INTERVAL_MS` | 250 | Écart minimal entre deux requêtes, tous workers confondus |
 | `GITHUB_CACHE_FRESHNESS_SECONDS` | 600 | Réutilisation sans requête ; `0` pour toujours interroger GitHub |
 | `GITHUB_CACHE_RETENTION_DAYS` | 7 | Purge des réponses que GitHub n'a pas reconfirmées depuis |
+| `WORKER_CONCURRENCY` | 2 | Scans exécutés en même temps par le worker (8 au plus), toujours au même rythme GitHub |
 
 Le cache contient des données personnelles publiques (logins, profils) : sa durée de conservation relève du cadrage RGPD (REM-30), comme celle des preuves.
 

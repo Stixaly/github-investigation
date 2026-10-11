@@ -26,7 +26,7 @@ use uuid::Uuid;
 pub use self::budget::{CORE, reserve_request};
 pub use self::http::{FetchError, GitHub, Response};
 use crate::model::Scan;
-use crate::store::{Role, ingest_github};
+use crate::store::{Batch, EntityRef, Role, ingest_github};
 
 /// Pages lues au plus par endpoint dans un scan, reprises comprises.
 pub const MAX_PAGES: usize = 2;
@@ -48,6 +48,8 @@ pub struct Settings {
     pub retention: Duration,
     /// Attente avant la première nouvelle tentative ; triplée ensuite, avec une part aléatoire.
     pub backoff: Duration,
+    /// Scans exécutés en même temps par un worker.
+    pub concurrency: usize,
 }
 
 impl Default for Settings {
@@ -57,6 +59,7 @@ impl Default for Settings {
             freshness: Duration::from_secs(600),
             retention: Duration::from_hours(7 * 24),
             backoff: Duration::from_secs(1),
+            concurrency: 2,
         }
     }
 }
@@ -68,9 +71,11 @@ impl Settings {
         freshness: Duration::ZERO,
         retention: Duration::from_hours(7 * 24),
         backoff: Duration::ZERO,
+        concurrency: 1,
     };
 
-    /// `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+    /// `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS`, `GITHUB_CACHE_RETENTION_DAYS`
+    /// et `WORKER_CONCURRENCY`.
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
     }
@@ -91,6 +96,11 @@ impl Settings {
             retention: number("GITHUB_CACHE_RETENTION_DAYS", 365)?
                 .map_or(defaults.retention, |days| Duration::from_hours(days * 24)),
             backoff: defaults.backoff,
+            concurrency: match number("WORKER_CONCURRENCY", 8)? {
+                Some(0) => anyhow::bail!("WORKER_CONCURRENCY : 1 au moins"),
+                Some(lanes) => usize::try_from(lanes)?,
+                None => defaults.concurrency,
+            },
         })
     }
 }
@@ -380,14 +390,17 @@ impl<'a> Collector<'a> {
                 progress.insert("status".into(), status.into());
             }
             let following_url = following.as_ref().ok().cloned().flatten();
+            if items.iter().any(|item| !item.is_object()) {
+                return Err(CollectError::Fetch("Objet GitHub invalide".into()));
+            }
+            let root = EntityRef::Id(root);
+            let mut batch = Batch::default();
+            for item in &items {
+                batch.ingest_github(self.scan.id, role, item, &url, page.observed, Some(&root));
+            }
             let mut tx = self.pool.begin().await?;
             guard(&mut tx, self.scan).await?;
-            for item in &items {
-                if !item.is_object() {
-                    return Err(CollectError::Fetch("Objet GitHub invalide".into()));
-                }
-                ingest_github(&mut tx, self.scan.id, role, item, &url, page.observed, Some(root)).await?;
-            }
+            batch.write(&mut tx).await?;
             let state = Value::Object(progress.clone());
             save_checkpoint(&mut tx, self.scan.id, role.as_str(), following_url.as_deref(), &state, false)
                 .await?;
@@ -540,6 +553,9 @@ mod tests {
         );
         assert!(parse(&[("GITHUB_MIN_INTERVAL_MS", "fast")]).is_err());
         assert!(parse(&[("GITHUB_CACHE_RETENTION_DAYS", "100000")]).is_err());
+        assert_eq!(parse(&[("WORKER_CONCURRENCY", "4")]).unwrap().concurrency, 4);
+        assert!(parse(&[("WORKER_CONCURRENCY", "0")]).is_err());
+        assert!(parse(&[("WORKER_CONCURRENCY", "9")]).is_err());
     }
 
     #[test]

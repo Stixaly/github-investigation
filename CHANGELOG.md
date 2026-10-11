@@ -14,12 +14,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
   - compteurs `stats` dans la couverture de chaque scan.
 - Commande `observatory github-status` : quotas de l'accès du worker, rythme partagé et cache, sans consommer de requête.
 - Variables facultatives `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+- `WORKER_CONCURRENCY` (2 par défaut, 8 au plus) : scans exécutés en même temps par un worker, sous le même rythme GitHub.
 
 ### Modifié
 
 - Pages de 100 éléments au lieu de 50 : deux fois plus de relations pour le même nombre de requêtes.
 - Écart minimal entre deux requêtes ramené d'une seconde à 250 ms ; le rythme suit désormais l'état annoncé par GitHub.
 - Une réponse 304 authentifiée n'est plus comptée dans le budget du scan.
+- Écriture des observations par lots (REM-31) : une page de collecte ou un paquet de 1 000 lignes d'import en cinq requêtes au plus. Un instantané de 250 000 dépôts s'importe en 29 s au lieu de 207 s sur la machine de développement, avec les mêmes empreintes.
 
 ## [0.2.0] — 2026-10-11
 

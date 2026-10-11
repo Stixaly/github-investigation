@@ -204,7 +204,7 @@ Ajouter un checkpoint par cible/endpoint/page : requête suivante, état, pages 
 
 Ajouter retries bornés avec backoff et jitter pour erreurs transitoires, distinction des erreurs de droit/quota/validation, traitement ETag/304 et budget restant visible. Le cache HTTP doit être cloisonné par identité d'accès et représentation ; une réponse 304 peut produire une nouvelle observation liée à la preuve existante. Les budgets ne doivent pas être remis à zéro à chaque retry.
 
-**Ingestion par lots.** L'import d'un instantané fait aujourd'hui environ cinq allers-retours SQL par dépôt : 250 000 dépôts prennent 3 minutes, mémoire constante. Avant d'activer le suivi récurrent, regrouper les insertions (`COPY` dans une table de transit puis insertion idempotente) pour l'import et pour les pages de collecte, sans changer les empreintes ni l'idempotence (REM-31).
+**Ingestion par lots (livrée, REM-31).** Une page de collecte ou un paquet de 1 000 lignes d'import est préparé en mémoire puis écrit en cinq requêtes ensemblistes au plus (`UNNEST`), au lieu de cinq allers-retours SQL environ par objet. Sur la machine de développement, un instantané synthétique de 50 000 comptes et 250 000 dépôts s'importe en 29 s au lieu de 207 s, avec les mêmes entités, relations et empreintes de preuve. `COPY` reste possible si des instantanés beaucoup plus gros l'exigent.
 
 La déduplication du corpus existe ; celle des **demandes de collecte** reste à construire. Séparer le job d'acquisition de ses demandes par investigation. Une annulation ou révocation détache son demandeur sans supprimer le travail nécessaire aux autres. Exposer les résultats uniquement via un rattachement autorisé.
 
@@ -405,7 +405,7 @@ Définir sauvegarde de PostgreSQL et des futures pièces stockées hors base, ch
 
 Surveiller : ancienneté du plus vieux job, attente quota, durée par endpoint, taux d'erreur, progrès de checkpoints, fraîcheur des cibles, taille des preuves, connexions/verrous PostgreSQL et durée des requêtes. Un worker vivant ne suffit pas à prouver que les investigations avancent.
 
-Le pool de connexions existe depuis la 0.2 (sqlx). Le traitement par lots est justifié par la mesure de l'import (§6, REM-31). Les limites Compose actuelles sont celles du pilote, pas un dimensionnement validé pour l'équipe. Tester installation, upgrade, restauration et permissions sur AlmaLinux/SELinux, Debian et Ubuntu ; WSL Ubuntu est le seul hôte déjà exercé localement.
+Le pool de connexions existe depuis la 0.2 (sqlx). Le traitement par lots est livré et mesuré (§6, REM-31). Les limites Compose actuelles sont celles du pilote, pas un dimensionnement validé pour l'équipe. Tester installation, upgrade, restauration et permissions sur AlmaLinux/SELinux, Debian et Ubuntu ; WSL Ubuntu est le seul hôte déjà exercé localement.
 
 ### Pratiques CTIParsor à compléter
 

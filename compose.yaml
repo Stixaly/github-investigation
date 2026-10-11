@@ -83,6 +83,7 @@ services:
       GITHUB_MIN_INTERVAL_MS: ${GITHUB_MIN_INTERVAL_MS:-250}
       GITHUB_CACHE_FRESHNESS_SECONDS: ${GITHUB_CACHE_FRESHNESS_SECONDS:-600}
       GITHUB_CACHE_RETENTION_DAYS: ${GITHUB_CACHE_RETENTION_DAYS:-7}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     secrets: [db_app, github_token]
     networks: [backend, egress]
     depends_on:
