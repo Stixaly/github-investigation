@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use common::{Client, database};
-use observatory::collector::{CollectError, GitHub, guard, reserve_request};
+use observatory::collector::{CORE, CollectError, GitHub, Settings, guard, reserve_request};
 use observatory::legacy::{ImportRequest, import_snapshot};
 use observatory::worker::{claim, execute, release, run};
 use serde_json::{Value, json};
@@ -66,7 +66,7 @@ async fn offline_full_collection() {
     let job = claim(&db.pool).await.unwrap().unwrap();
     assert_eq!(job.id.to_string(), scan);
     let github = GitHub::with_base(&server.uri(), "").unwrap();
-    execute(&db.pool, &github, &job, Duration::ZERO).await.unwrap();
+    execute(&db.pool, &github, &job, Settings::IMMEDIATE).await.unwrap();
 
     let (_, scans) = client.get(&format!("/api/v1/investigations/{case}/scans")).await;
     assert_eq!(scans[0]["status"], "succeeded");
@@ -110,7 +110,9 @@ async fn foreign_pagination_marks_the_endpoint_in_error() {
         respond(&server, &format!("/repos/alice/example/{route}"), json!([])).await;
     }
     let job = claim(&db.pool).await.unwrap().unwrap();
-    execute(&db.pool, &GitHub::with_base(&server.uri(), "").unwrap(), &job, Duration::ZERO).await.unwrap();
+    execute(&db.pool, &GitHub::with_base(&server.uri(), "").unwrap(), &job, Settings::IMMEDIATE)
+        .await
+        .unwrap();
     let (_, graph) = client.get(&format!("/api/v1/scans/{scan}/graph")).await;
     assert_eq!(graph["coverage"]["contributors"]["status"], "error");
     assert_eq!(graph["coverage"]["contributors"]["reason"], "Lien de pagination non autorisé");
@@ -126,9 +128,9 @@ async fn budget_and_quota_are_persisted() {
     let case = client.investigation("Quota").await;
     let scan = client.scan(&case, "alice/example").await;
     let job = claim(&db.pool).await.unwrap().unwrap();
-    reserve_request(&db.pool, &job, Duration::from_secs(1)).await.unwrap();
+    reserve_request(&db.pool, &job, CORE, Duration::from_secs(1)).await.unwrap();
     assert!(matches!(
-        reserve_request(&db.pool, &job, Duration::from_secs(1)).await,
+        reserve_request(&db.pool, &job, CORE, Duration::from_secs(1)).await,
         Err(CollectError::RateLimited(_))
     ));
     sqlx::query("UPDATE scans SET requests_used = max_requests WHERE id = $1::uuid")
@@ -137,7 +139,7 @@ async fn budget_and_quota_are_persisted() {
         .await
         .unwrap();
     assert!(matches!(
-        reserve_request(&db.pool, &job, Duration::ZERO).await,
+        reserve_request(&db.pool, &job, CORE, Duration::ZERO).await,
         Err(CollectError::BudgetExceeded)
     ));
 }
@@ -156,7 +158,9 @@ async fn rate_limit_requeues_without_losing_observations() {
         .mount(&server)
         .await;
     let job = claim(&db.pool).await.unwrap().unwrap();
-    execute(&db.pool, &GitHub::with_base(&server.uri(), "").unwrap(), &job, Duration::ZERO).await.unwrap();
+    execute(&db.pool, &GitHub::with_base(&server.uri(), "").unwrap(), &job, Settings::IMMEDIATE)
+        .await
+        .unwrap();
     let (status, waits): (String, bool) = sqlx::query_as(
         "SELECT status, available_at > requested_at + interval '299 seconds' FROM scans WHERE id = $1::uuid",
     )
@@ -166,7 +170,9 @@ async fn rate_limit_requeues_without_losing_observations() {
     .unwrap();
     assert_eq!((status.as_str(), waits), ("waiting_quota", true));
     let paused: bool =
-        sqlx::query_scalar("SELECT next_request_at > now() + interval '200 seconds' FROM github_budget")
+        sqlx::query_scalar(
+            "SELECT next_request_at > now() + interval '200 seconds' FROM github_rate_limits WHERE resource = 'core'",
+        )
             .fetch_one(&db.pool)
             .await
             .unwrap();
@@ -273,9 +279,12 @@ async fn worker_loop_runs_queued_scans_until_shutdown() {
         }
     };
     let github = GitHub::with_base(&server.uri(), "").unwrap();
-    tokio::time::timeout(Duration::from_secs(30), run(db.pool.clone(), github, Duration::ZERO, finished))
-        .await
-        .expect("the worker stops when asked");
+    tokio::time::timeout(
+        Duration::from_secs(30),
+        run(db.pool.clone(), github, Settings::IMMEDIATE, finished),
+    )
+    .await
+    .expect("the worker stops when asked");
     assert_eq!(scan_status(&db.pool, &scan).await.0, "succeeded");
 }
 
@@ -293,9 +302,12 @@ async fn stopping_mid_scan_hands_it_back() {
         .await;
     let github = GitHub::with_base(&server.uri(), "").unwrap();
     let shutdown = tokio::time::sleep(Duration::from_millis(500));
-    tokio::time::timeout(Duration::from_secs(10), run(db.pool.clone(), github, Duration::ZERO, shutdown))
-        .await
-        .expect("shutdown does not wait for GitHub");
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        run(db.pool.clone(), github, Settings::IMMEDIATE, shutdown),
+    )
+    .await
+    .expect("shutdown does not wait for GitHub");
     // Claimed (generation 1), then released at once (generation 2) for another worker.
     assert_eq!(scan_status(&db.pool, &scan).await, ("queued".to_owned(), 2));
     assert!(claim(&db.pool).await.unwrap().is_some());
