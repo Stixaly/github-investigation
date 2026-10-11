@@ -12,7 +12,7 @@ use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVe
 use axum::http::{HeaderMap, StatusCode};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;

@@ -63,11 +63,11 @@ pub async fn empty_database() -> Option<(String, PgConnectOptions)> {
     ROLE.get_or_init(|| async {
         // Roles are cluster-wide: create it once, before parallel tests migrate their databases.
         let mut conn = PgConnection::connect_with(&server).await.expect("test server");
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN \
              CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'; END IF; END $$; \
              ALTER ROLE {APP_ROLE} PASSWORD '{APP_PASSWORD}'"
-        ))
+        )))
         .execute(&mut conn)
         .await
         .expect("application role");
@@ -75,7 +75,10 @@ pub async fn empty_database() -> Option<(String, PgConnectOptions)> {
     .await;
     let name = format!("observatory_test_{}", Uuid::new_v4().simple());
     let mut conn = PgConnection::connect_with(&server).await.expect("test server");
-    sqlx::raw_sql(&format!("CREATE DATABASE {name}")).execute(&mut conn).await.expect("create database");
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
+        .execute(&mut conn)
+        .await
+        .expect("create database");
     let admin = server.database(&name);
     Some((name, admin))
 }

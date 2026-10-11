@@ -154,9 +154,11 @@ async fn grant_app_role(conn: &mut PgConnection, password: &str) -> Result<(), S
             return Err(SchemaError::AppPassword);
         }
         let literal = format!("'{}'", password.replace('\'', "''"));
-        let created = sqlx::raw_sql(&format!("CREATE ROLE {APP_ROLE} LOGIN PASSWORD {literal}"))
-            .execute(&mut *conn)
-            .await;
+        // APP_ROLE is a constant and `literal` the quoted password checked above.
+        let created =
+            sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {APP_ROLE} LOGIN PASSWORD {literal}")))
+                .execute(&mut *conn)
+                .await;
         match created {
             // Another migrator created it concurrently (roles are cluster-wide).
             Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("42710") => {}
@@ -165,13 +167,14 @@ async fn grant_app_role(conn: &mut PgConnection, password: &str) -> Result<(), S
             }
         }
     }
-    sqlx::raw_sql(&format!(
+    // Only the constant APP_ROLE is interpolated.
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE CREATE ON SCHEMA public FROM PUBLIC; \
          GRANT USAGE ON SCHEMA public TO {APP_ROLE}; \
          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {APP_ROLE}; \
          REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON schema_migrations FROM {APP_ROLE}; \
          GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}"
-    ))
+    )))
     .execute(conn)
     .await?;
     Ok(())

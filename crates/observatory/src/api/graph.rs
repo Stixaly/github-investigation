@@ -85,7 +85,8 @@ pub async fn graph(
     let mut conn = state.pool.acquire().await?;
     let scan = accessible_scan(&mut conn, scan_id, user.id, Access::Read).await?;
     // The seed first, then accounts, then the induced subgraph of the selected entities.
-    let ids: Vec<Uuid> = sqlx::query_scalar(&format!(
+    // Only the constant LABEL_SQL is interpolated; every value is a bound parameter.
+    let ids: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "WITH observed AS ( \
            SELECT e.id, e.kind, {LABEL_SQL} AS label \
            FROM scan_entities se JOIN entities e ON e.id = se.entity_id \
@@ -101,7 +102,7 @@ pub async fn graph(
          GROUP BY id, kind \
          ORDER BY bool_or(label = $5) DESC, (kind = 'Account') DESC, id \
          LIMIT $6"
-    ))
+    )))
     .bind(scan_id)
     .bind(&query.q)
     .bind(format!("%{}%", escape_like(&query.q)))

@@ -16,13 +16,13 @@ observatory-domain = { path = "crates/observatory-domain" }
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash", "std"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "tracing"] }
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4"
-hmac = "0.12"
-rand = "0.9"
+hmac = "0.13"
+rand = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "stream"] }
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
@@ -30,8 +30,8 @@ serde = { version = "1", features = ["derive"] }
 # its private number marker turns an object keyed `$serde_json::private::Number`
 # into a number (found by fuzz/fuzz_targets/canonical.rs, see ADR 0002).
 serde_json = { version = "1", features = ["float_roundtrip"] }
-sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
