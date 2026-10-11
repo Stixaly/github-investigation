@@ -31,7 +31,7 @@ Chaque test crée sa propre base `observatory_test_<uuid>` et travaille avec le 
 
 ## Règles du code
 
-- **Rust** : `cargo fmt` ; clippy `all` en erreur et `pedantic` sans avertissement ; `unsafe` interdit ; pas de `unwrap()` hors des tests. Les règles pures, en particulier tout ce qui lit une entrée tierce, vont dans `crates/observatory-domain`, avec tests unitaires et, si besoin, une cible de fuzzing.
+- **Rust** : `cargo fmt` ; clippy `all` en erreur et `pedantic` sans avertissement ; `unsafe` interdit ; pas de `unwrap()` hors des tests. Les règles pures, en particulier tout ce qui lit une entrée tierce, vont dans `crates/observatory-domain`, avec tests unitaires et, si besoin, une cible de fuzzing. Des tests unitaires qui manipulent des mots de passe ou des jetons de test vont dans un fichier `<module>_tests.rs` (déclaré par `#[path]`), exclu de CodeQL comme les tests d'intégration.
 - **SQL** : paramètres liés uniquement (`$1`), jamais de valeur interpolée ; un motif `LIKE` saisi par un analyste passe par `escape_like`.
 - **Frontend** : Prettier, ESLint (`typescript-eslint` + règles des hooks React), TypeScript strict, tests Vitest/Testing Library à côté des composants. Les libellés et rôles ARIA servent au test navigateur : les modifier avec `frontend/e2e.mjs`.
 - **Domaine** : ne jamais interpréter une absence dans une collecte partielle comme une suppression ; appliquer les droits de l'investigation avant de charger preuves, relations, notes ou recoupements ; ne jamais persister un objet privé, pas même comme preuve.

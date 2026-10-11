@@ -38,6 +38,7 @@ jobs:
           config: |
             paths-ignore:
               - crates/observatory/tests
+              - crates/**/*_tests.rs
               - fuzz
               - frontend/src/**/*.test.ts
               - frontend/src/**/*.test.tsx

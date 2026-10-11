@@ -54,8 +54,8 @@ mod tests {
 
     #[test]
     fn passwords_need_fourteen_characters() {
-        assert!(check_new_password("thirteen-char").is_err());
-        assert!(check_new_password("fourteen-chars").is_ok());
+        assert!(check_new_password(&"a".repeat(13)).is_err());
+        assert!(check_new_password(&"a".repeat(14)).is_ok());
         assert!(check_new_password(&"é".repeat(14)).is_ok());
         assert!(check_new_password(&"x".repeat(1025)).is_err());
     }
