@@ -8,7 +8,7 @@ use axum::http::StatusCode;
 use common::{Client, database};
 use observatory::collector::{CollectError, GitHub, guard, reserve_request};
 use observatory::legacy::{ImportRequest, import_snapshot};
-use observatory::worker::{claim, execute, release};
+use observatory::worker::{claim, execute, release, run};
 use serde_json::{Value, json};
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
@@ -243,4 +243,85 @@ async fn legacy_import_is_idempotent_and_inert() {
     // A reader cannot import into the investigation.
     let reader = ImportRequest { login: "reader".into(), ..request };
     assert!(import_snapshot(&db.pool, &reader).await.is_err());
+}
+
+async fn scan_status(pool: &sqlx::PgPool, scan: &str) -> (String, i32) {
+    sqlx::query_as("SELECT status, generation FROM scans WHERE id = $1::uuid")
+        .bind(scan)
+        .fetch_one(pool)
+        .await
+        .expect("scan status")
+}
+
+#[tokio::test]
+async fn worker_loop_runs_queued_scans_until_shutdown() {
+    let Some(db) = database().await else { return };
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let case = client.investigation("Boucle").await;
+    let scan = client.scan(&case, "alice/example").await;
+    let server = MockServer::start().await;
+    respond(&server, "/repos/alice/example", root()).await;
+    for route in ["contributors", "forks", "issues", "events"] {
+        respond(&server, &format!("/repos/alice/example/{route}"), json!([])).await;
+    }
+    let pool = db.pool.clone();
+    let watched = scan.clone();
+    let finished = async move {
+        while scan_status(&pool, &watched).await.0 != "succeeded" {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    };
+    let github = GitHub::with_base(&server.uri(), "").unwrap();
+    tokio::time::timeout(Duration::from_secs(30), run(db.pool.clone(), github, Duration::ZERO, finished))
+        .await
+        .expect("the worker stops when asked");
+    assert_eq!(scan_status(&db.pool, &scan).await.0, "succeeded");
+}
+
+#[tokio::test]
+async fn stopping_mid_scan_hands_it_back() {
+    let Some(db) = database().await else { return };
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let case = client.investigation("Arrêt").await;
+    let scan = client.scan(&case, "alice/example").await;
+    let server = MockServer::start().await;
+    Mock::given(path("/repos/alice/example"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(root()).set_delay(Duration::from_secs(20)))
+        .mount(&server)
+        .await;
+    let github = GitHub::with_base(&server.uri(), "").unwrap();
+    let shutdown = tokio::time::sleep(Duration::from_millis(500));
+    tokio::time::timeout(Duration::from_secs(10), run(db.pool.clone(), github, Duration::ZERO, shutdown))
+        .await
+        .expect("shutdown does not wait for GitHub");
+    // Claimed (generation 1), then released at once (generation 2) for another worker.
+    assert_eq!(scan_status(&db.pool, &scan).await, ("queued".to_owned(), 2));
+    assert!(claim(&db.pool).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn demo_investigation_is_browsable() {
+    let Some(db) = database().await else { return };
+    let investigation = observatory::demo::create_demo(&db.pool, "Alice").await.unwrap();
+    assert!(observatory::demo::create_demo(&db.pool, "nobody").await.is_err());
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let (_, list) = client.get("/api/v1/investigations").await;
+    assert_eq!(
+        (list[0]["title"].as_str(), list[0]["role"].as_str()),
+        (Some("Terrain de démonstration"), Some("owner"))
+    );
+    let (_, scans) = client.get(&format!("/api/v1/investigations/{investigation}/scans")).await;
+    let (october, september) = (scans[0]["id"].as_str().unwrap(), scans[1]["id"].as_str().unwrap());
+    let (_, graph) = client.get(&format!("/api/v1/scans/{october}/graph")).await;
+    assert_eq!(graph["nodes"].as_array().unwrap().len(), 14);
+    let organization = graph["nodes"].as_array().unwrap().iter().find(|n| n["label"] == "demo-lab").unwrap();
+    assert_eq!(organization["data"]["type"], "Organization");
+    let (_, comparison) = client.get(&format!("/api/v1/scans/{september}/compare/{october}")).await;
+    assert_eq!(
+        (comparison["newly_observed"].as_i64(), comparison["not_reobserved"].as_i64()),
+        (Some(2), Some(0))
+    );
 }

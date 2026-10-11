@@ -42,12 +42,13 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy (pedantic, warnings are errors)
         run: cargo clippy --all-targets --locked -- -D warnings
-      # REQUIRE_DB_TESTS turns a skipped database test into a failure.
+      # REQUIRE_DB_TESTS turns a skipped database test into a failure. The line
+      # coverage floor sits just under the 88.6 % measured for 0.2: raise it as tests land.
       - name: Tests and line coverage (floor in the command)
         env:
           TEST_DATABASE_URL: postgres://postgres:ci-only@127.0.0.1:5432/postgres
           REQUIRE_DB_TESTS: "1"
-        run: cargo llvm-cov --locked --workspace --fail-under-lines 80 --summary-only
+        run: cargo llvm-cov --locked --workspace --fail-under-lines 87 --summary-only
 
   migration-from-base:
     name: Upgrade a database written by the base commit
