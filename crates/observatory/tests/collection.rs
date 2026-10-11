@@ -11,7 +11,7 @@ use observatory::legacy::{ImportRequest, import_snapshot};
 use observatory::worker::{claim, execute, release, run};
 use serde_json::{Value, json};
 use uuid::Uuid;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn root() -> Value {
@@ -336,4 +336,116 @@ async fn demo_investigation_is_browsable() {
         (comparison["newly_observed"].as_i64(), comparison["not_reobserved"].as_i64()),
         (Some(2), Some(0))
     );
+}
+
+#[tokio::test]
+async fn account_pivot_uses_graphql_with_a_token() {
+    let Some(db) = database().await else { return };
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let case = client.investigation("Pivot").await;
+    let scan = client.scan(&case, "alice").await;
+    let server = MockServer::start().await;
+    respond(&server, "/users/alice", json!({"id": 2, "login": "alice", "type": "User"})).await;
+    let owner = json!({"__typename": "User", "login": "alice", "databaseId": 2});
+    let upstream = json!({"databaseId": 7, "nameWithOwner": "bob/upstream", "isPrivate": false, "isFork": false,
+                          "owner": {"__typename": "User", "login": "bob", "databaseId": 3}});
+    let first = json!({"data": {"repositoryOwner": {"repositories": {
+    "pageInfo": {"hasNextPage": true, "endCursor": "c1"},
+    "nodes": [
+        {"databaseId": 5, "nameWithOwner": "alice/upstream", "isPrivate": false, "isFork": true,
+         "owner": owner, "parent": upstream},
+        {"databaseId": 6, "nameWithOwner": "alice/secret", "isPrivate": true, "isFork": false,
+         "owner": owner, "parent": null}
+    ]}}}});
+    let second = json!({"data": {"repositoryOwner": {"repositories": {
+        "pageInfo": {"hasNextPage": false, "endCursor": "c2"},
+        "nodes": [{"databaseId": 8, "nameWithOwner": "alice/tool", "isPrivate": false, "isFork": false,
+                   "owner": owner, "parent": null}]}}}});
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .and(body_partial_json(json!({"variables": {"login": "alice", "after": "c1"}})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(second))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .and(body_partial_json(json!({"variables": {"login": "alice", "after": null}})))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(first)
+                .insert_header("x-ratelimit-resource", "graphql")
+                .insert_header("x-ratelimit-limit", "5000")
+                .insert_header("x-ratelimit-remaining", "4990")
+                .insert_header(
+                    "x-ratelimit-reset",
+                    (chrono::Utc::now().timestamp() + 3000).to_string().as_str(),
+                ),
+        )
+        .mount(&server)
+        .await;
+    let job = claim(&db.pool).await.unwrap().unwrap();
+    let github = GitHub::with_base(&server.uri(), "test-token").unwrap();
+    execute(&db.pool, &github, &job, Settings::IMMEDIATE).await.unwrap();
+
+    let (_, scans) = client.get(&format!("/api/v1/investigations/{case}/scans")).await;
+    assert_eq!(
+        (scans[0]["status"].as_str(), scans[0]["requests_used"].as_i64()),
+        (Some("succeeded"), Some(3))
+    );
+    assert_eq!(
+        scans[0]["coverage"]["repositories"],
+        json!({"status": "complete", "items": 3, "pages": 2, "via": "graphql"})
+    );
+    let (_, graph) = client.get(&format!("/api/v1/scans/{scan}/graph")).await;
+    let label = |id: &Value| {
+        graph["nodes"].as_array().unwrap().iter().find(|node| &node["id"] == id).unwrap()["label"].clone()
+    };
+    let forks: Vec<(Value, Value)> = graph["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|edge| edge["kind"] == "FORK_OF")
+        .map(|edge| (label(&edge["source_id"]), label(&edge["target_id"])))
+        .collect();
+    assert_eq!(forks, [(json!("alice/upstream"), json!("bob/upstream"))], "the upstream comes with the fork");
+    let labels: Vec<&str> =
+        graph["nodes"].as_array().unwrap().iter().map(|node| node["label"].as_str().unwrap()).collect();
+    assert!(labels.contains(&"alice/tool") && !labels.contains(&"alice/secret"));
+    // GraphQL nodes are the evidence, as received.
+    let proofs: i64 = sqlx::query_scalar("SELECT count(*) FROM evidence WHERE payload ? 'nameWithOwner'")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(proofs, 2);
+    let remaining: Option<i32> =
+        sqlx::query_scalar("SELECT remaining FROM github_rate_limits WHERE resource = 'graphql'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert!(remaining.is_some_and(|remaining| remaining <= 4990));
+}
+
+#[tokio::test]
+async fn account_pivot_falls_back_to_rest_without_a_token() {
+    let Some(db) = database().await else { return };
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+    let case = client.investigation("Pivot REST").await;
+    client.scan(&case, "demo-org").await;
+    let server = MockServer::start().await;
+    respond(&server, "/users/demo-org", json!({"id": 4, "login": "demo-org", "type": "Organization"})).await;
+    respond(
+        &server,
+        "/orgs/demo-org/repos",
+        json!([{"id": 9, "full_name": "demo-org/site", "private": false, "owner": {"id": 4, "login": "demo-org"}}]),
+    )
+    .await;
+    let job = claim(&db.pool).await.unwrap().unwrap();
+    execute(&db.pool, &GitHub::with_base(&server.uri(), "").unwrap(), &job, Settings::IMMEDIATE)
+        .await
+        .unwrap();
+    let (_, scans) = client.get(&format!("/api/v1/investigations/{case}/scans")).await;
+    assert_eq!(scans[0]["status"], "succeeded");
+    assert_eq!(scans[0]["coverage"]["repositories"], json!({"status": "complete", "items": 1, "pages": 1}));
 }

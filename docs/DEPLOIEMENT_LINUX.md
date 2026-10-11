@@ -103,7 +103,8 @@ Le collecteur ([ADR 0005](adr/0005-collecte-econome.md)) :
 - garde chaque réponse dans un cache cloisonné par accès et la revalide par requête conditionnelle : une réponse 304 n'est pas décomptée par GitHub pour un accès authentifié, ni par le budget du scan ;
 - réutilise sans requête une réponse confirmée depuis moins de 10 minutes ; l'observation est alors datée de cette confirmation ;
 - reprend un scan interrompu (attente de quota, arrêt du worker) à sa page suivante ;
-- refait au plus deux fois une requête après une erreur réseau ou 5xx, chaque tentative comptant dans le budget du scan.
+- refait au plus deux fois une requête après une erreur réseau ou 5xx, chaque tentative comptant dans le budget du scan ;
+- avec un token, lit les dépôts d'un compte par l'API GraphQL : une page de 100 dépôts coûte un point et apporte aussi le dépôt d'origine de chaque fork, que la liste REST n'indique pas. Sans token, la liste REST est utilisée.
 
 La couverture de chaque scan détaille ces effets dans `stats` : requêtes envoyées, réponses 304, réponses servies par le cache, nouvelles tentatives. Réglages facultatifs, à placer dans `.env` :
 

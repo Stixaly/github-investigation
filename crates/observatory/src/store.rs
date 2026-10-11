@@ -192,6 +192,13 @@ struct RelationObservation {
     precision: Precision,
 }
 
+/// Preuve d'un objet préparé : l'objet lui-même, ou la réponse reçue dont il est tiré.
+#[derive(Debug, Clone, Copy)]
+enum Proof<'a> {
+    Itself(&'a str),
+    Received(&'a Value, &'a str),
+}
+
 /// Identifiants attribués par l'écriture d'un lot.
 #[derive(Debug, Default)]
 pub struct Written {
@@ -340,18 +347,49 @@ impl Batch {
         observed: DateTime<Utc>,
         root: Option<&EntityRef>,
     ) -> Option<EntityRef> {
+        self.ingest(scan_id, role, item, Proof::Itself(source_url), observed, root)
+    }
+
+    /// Comme [`Batch::ingest_github`], pour un objet mis en forme REST à partir d'une
+    /// réponse reçue sous une autre forme (nœud GraphQL) : la réponse reste la preuve,
+    /// telle que reçue, et l'objet est recopié dans l'observation.
+    pub fn ingest_received(
+        &mut self,
+        scan_id: Uuid,
+        role: Role,
+        item: &Value,
+        (received, source): (&Value, &str),
+        observed: DateTime<Utc>,
+        root: Option<&EntityRef>,
+    ) -> Option<EntityRef> {
+        self.ingest(scan_id, role, item, Proof::Received(received, source), observed, root)
+    }
+
+    fn ingest(
+        &mut self,
+        scan_id: Uuid,
+        role: Role,
+        item: &Value,
+        proof: Proof<'_>,
+        observed: DateTime<Utc>,
+        root: Option<&EntityRef>,
+    ) -> Option<EntityRef> {
         if role == Role::Events && item.get("public") != Some(&Value::Bool(true)) {
             return None;
         }
         if role.lists_repositories() && is_private(item) {
             return None;
         }
-        let proof = self.evidence(item, source_url);
+        let (payload, source, is_proof) = match proof {
+            Proof::Itself(source) => (item, source, true),
+            Proof::Received(received, source) => (received, source, false),
+        };
+        let proof = self.evidence(payload, source);
         let observation =
             Observation { scan_id, proof: &proof, observed: Some(observed), precision: Precision::Instant };
         match role {
             Role::Repository | Role::Forks | Role::Repositories => {
-                let target = self.repository(&observation, Some(item), true)?;
+                let target = self.repository(&observation, Some(item), is_proof)?;
                 if role == Role::Forks
                     && let Some(root) = root
                 {
@@ -363,7 +401,7 @@ impl Batch {
                 Some(target)
             }
             Role::Account | Role::Contributors => {
-                let actor = self.account(&observation, Some(item), true)?;
+                let actor = self.account(&observation, Some(item), is_proof)?;
                 if role == Role::Contributors
                     && let Some(root) = root
                 {

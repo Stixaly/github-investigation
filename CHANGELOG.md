@@ -14,6 +14,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
   - compteurs `stats` dans la couverture de chaque scan.
 - Commande `observatory github-status` : quotas de l'accès du worker, rythme partagé et cache, sans consommer de requête.
 - Variables facultatives `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+- Pivot compte → dépôts par l'API GraphQL lorsqu'un token est configuré : chaque page de 100 dépôts apporte aussi le dépôt d'origine des forks. Les nœuds GraphQL sont conservés tels que reçus comme preuves.
 - `WORKER_CONCURRENCY` (2 par défaut, 8 au plus) : scans exécutés en même temps par un worker, sous le même rythme GitHub.
 
 ### Modifié

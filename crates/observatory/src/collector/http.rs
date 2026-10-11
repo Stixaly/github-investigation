@@ -160,6 +160,16 @@ impl GitHub {
         {
             request = request.header(IF_NONE_MATCH, value);
         }
+        self.send(request).await
+    }
+
+    /// Requête GraphQL (`POST /graphql`) ; GitHub exige un accès authentifié.
+    pub async fn graphql(&self, query: &str, variables: &Value) -> Fetched {
+        let body = serde_json::json!({"query": query, "variables": variables});
+        self.send(self.client.post(format!("{}/graphql", self.base)).json(&body)).await
+    }
+
+    async fn send(&self, request: reqwest::RequestBuilder) -> Fetched {
         let response = match request.send().await {
             Ok(response) => response,
             Err(error) => return Fetched::error(transport(&error)),
@@ -424,6 +434,29 @@ mod tests {
                 RateLimit { resource: "graphql".into(), remaining: 5000, limit: 5000, reset: 1_900_000_100 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn graphql_posts_the_query_and_reads_its_quota() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/graphql"))
+            .and(wiremock::matchers::body_partial_json(json!({"variables": {"login": "alice"}})))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"data": {}}))
+                    .insert_header("x-ratelimit-resource", "graphql")
+                    .insert_header("x-ratelimit-limit", "5000")
+                    .insert_header("x-ratelimit-remaining", "4990")
+                    .insert_header("x-ratelimit-reset", "1900000000"),
+            )
+            .mount(&server)
+            .await;
+        let fetched = github(&server).graphql("query { viewer { login } }", &json!({"login": "alice"})).await;
+        assert_eq!(fetched.result, Ok(fresh(json!({"data": {}}), "", None)));
+        assert_eq!(fetched.rate.map(|rate| rate.resource), Some("graphql".into()));
+        let request = &server.received_requests().await.unwrap()[0];
+        assert_eq!(request.headers["authorization"], "Bearer test-token");
     }
 
     #[test]
