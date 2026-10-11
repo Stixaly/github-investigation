@@ -6,7 +6,9 @@
 use std::future::Future;
 use std::time::Duration;
 
+use futures_util::future::join_all;
 use sqlx::PgPool;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::collector::{CollectError, Collector, GitHub, Settings, cache};
@@ -101,34 +103,62 @@ pub async fn release(pool: &PgPool, scan: &Scan) -> sqlx::Result<()> {
     .map(|_| ())
 }
 
-/// Boucle du worker, jusqu'au signal d'arrêt. Purge aussi le cache HTTP expiré, au démarrage puis toutes les heures.
+/// Boucle du worker, jusqu'au signal d'arrêt : `settings.concurrency` scans au plus
+/// en même temps. Purge aussi le cache HTTP expiré, au démarrage puis toutes les heures.
+///
+/// Les voies d'exécution partagent la tâche, le pool et le rythme GitHub : la
+/// concurrence recouvre les attentes réseau et l'écriture en base, sans dépasser
+/// l'écart minimal entre deux requêtes.
 pub async fn run(pool: PgPool, github: GitHub, settings: Settings, shutdown: impl Future<Output = ()>) {
-    tokio::pin!(shutdown);
+    let (stop, stopped) = watch::channel(false);
+    let lanes = join_all(
+        (0..settings.concurrency.max(1))
+            .map(|lane| run_lane(&pool, &github, settings, stopped.clone(), lane == 0)),
+    );
+    let signal = async {
+        shutdown.await;
+        // Every lane holds a receiver: the channel stays open until they return.
+        let _ = stop.send(true);
+    };
+    tokio::join!(lanes, signal);
+}
+
+/// Une voie d'exécution : réserve un scan, l'exécute, recommence.
+async fn run_lane(
+    pool: &PgPool,
+    github: &GitHub,
+    settings: Settings,
+    mut stopped: watch::Receiver<bool>,
+    purges: bool,
+) {
     let mut next_purge = tokio::time::Instant::now();
     loop {
-        if tokio::time::Instant::now() >= next_purge {
+        if *stopped.borrow() {
+            return;
+        }
+        if purges && tokio::time::Instant::now() >= next_purge {
             next_purge = tokio::time::Instant::now() + PURGE_EVERY;
-            match cache::purge(&pool, settings.retention).await {
+            match cache::purge(pool, settings.retention).await {
                 Ok(0) => {}
                 Ok(removed) => tracing::info!(removed, "expired HTTP cache entries purged"),
                 Err(error) => tracing::error!(%error, "could not purge the HTTP cache"),
             }
         }
         let claimed = tokio::select! {
-            () = &mut shutdown => return,
-            claimed = claim(&pool) => claimed,
+            _ = stopped.changed() => return,
+            claimed = claim(pool) => claimed,
         };
         let pause = match claimed {
             Ok(Some(scan)) => {
                 tracing::info!(scan = %scan.id, seed = %scan.seed, attempt = scan.attempts, "scan claimed");
                 tokio::select! {
-                    result = execute(&pool, &github, &scan, settings) => {
+                    result = execute(pool, github, &scan, settings) => {
                         if let Err(error) = result {
                             tracing::error!(scan = %scan.id, %error, "could not record scan result");
                         }
                     }
-                    () = &mut shutdown => {
-                        if let Err(error) = release(&pool, &scan).await {
+                    _ = stopped.changed() => {
+                        if let Err(error) = release(pool, &scan).await {
                             tracing::error!(scan = %scan.id, %error, "could not release scan");
                         }
                         return;
@@ -143,7 +173,7 @@ pub async fn run(pool: PgPool, github: GitHub, settings: Settings, shutdown: imp
             }
         };
         tokio::select! {
-            () = &mut shutdown => return,
+            _ = stopped.changed() => return,
             () = tokio::time::sleep(pause) => {}
         }
     }

@@ -165,6 +165,21 @@ try {
   await page.screenshot({ path: output + '/chronologie-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Exploration', exact: true }).click();
   await page.locator('.graph[data-ready="true"]').waitFor();
+  // Whole-investigation view, common neighbours and cross-investigation search.
+  await page.getByLabel('Scan affiché').selectOption('all');
+  await page.locator('.graph[data-ready="true"]').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 14);
+  for (const label of ['demo-alice', 'demo-bob']) {
+    await page.getByLabel('Rechercher dans le graphe').fill(label);
+    await page.locator('.graph-search-results').getByRole('button', { name: label, exact: true }).click();
+    if (label === 'demo-alice') await page.getByRole('button', { name: 'Retenir pour comparer' }).click();
+  }
+  await page.getByRole('button', { name: 'Voisins communs avec demo-alice' }).click();
+  await page.getByRole('heading', { name: '1 voisin commun' }).waitFor();
+  await page.getByRole('button', { name: 'Fermer le détail' }).click();
+  await page.getByLabel('Rechercher dans tous les dossiers').fill('alice');
+  await page.locator('.search-result', { hasText: 'demo-alice' }).first().waitFor();
+  await page.getByLabel('Rechercher dans tous les dossiers').fill('');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.graph[data-engine="3d"][data-simulation="idle"]').waitFor({ timeout: 60000 });
   await page.screenshot({ path: output + '/exploration-mobile.png', fullPage: true });
@@ -185,7 +200,7 @@ try {
   await page.getByRole('button', { name: 'Ouvrir mon espace' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, mobile, WebGL fallback, logout.',
+    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, whole-investigation view, common neighbours, search, mobile, WebGL fallback, logout.',
   );
 } catch (error) {
   console.log(

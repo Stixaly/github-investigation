@@ -122,10 +122,12 @@ async fn run(command: Command) -> anyhow::Result<()> {
             api::serve(AppState { pool, config: Arc::new(config) }, shutdown_signal()).await
         }
         Command::Worker => {
-            let pool = pool(settings.options(), 4).await.context("connexion PostgreSQL")?;
+            let collect = Settings::from_env()?;
+            // One connection per lane, plus the claims and the cache purge.
+            let connections = u32::try_from(collect.concurrency + 2)?;
+            let pool = pool(settings.options(), connections).await.context("connexion PostgreSQL")?;
             migrate::verify(&pool).await?;
             let github = GitHub::new(&secret("GITHUB_TOKEN")?)?;
-            let collect = Settings::from_env()?;
             tracing::info!(settings = ?collect, authenticated = github.authenticated(), "worker started");
             worker::run(pool, github, collect, shutdown_signal()).await;
             Ok(())

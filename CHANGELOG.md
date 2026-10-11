@@ -4,6 +4,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 
 ## [Non publié]
 
+## [0.3.0] — 2026-10-12
+
+Collecte plus économe et plus rapide, pivots à l'échelle du dossier. La montée depuis la 0.1 ou la 0.2 applique les migrations manquantes (0002 à 0004) ; répétée sur une copie restaurée de la base pilote, sans changement des données observées.
+
 ### Ajouté
 
 - Collecte économe en quota GitHub, migration 0003 ([ADR 0005](docs/adr/0005-collecte-econome.md)) :
@@ -14,12 +18,20 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
   - compteurs `stats` dans la couverture de chaque scan.
 - Commande `observatory github-status` : quotas de l'accès du worker, rythme partagé et cache, sans consommer de requête.
 - Variables facultatives `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+- Pivot compte → dépôts par l'API GraphQL lorsqu'un token est configuré : chaque page de 100 dépôts apporte aussi le dépôt d'origine des forks. Les nœuds GraphQL sont conservés tels que reçus comme preuves.
+- `WORKER_CONCURRENCY` (2 par défaut, 8 au plus) : scans exécutés en même temps par un worker, sous le même rythme GitHub.
+- Graphe cumulé d'un dossier (`GET /api/v1/investigations/{id}/graph`) et option « Tout le dossier » de l'exploration : chaque entité et relation avec sa dernière observation.
+- Recherche par fragment de nom dans tous les dossiers de l'analyste (`GET /api/v1/search`), index trigrammes `pg_trgm` (migration 0004), depuis la barre latérale.
+- Voisins communs de deux entités dans un dossier (`GET /api/v1/investigations/{id}/common`), depuis l'inspecteur.
+- « Collecter ses relations » : lance un scan depuis l'inspecteur d'un compte ou d'un dépôt.
+- Index des observations par entité et par relation, et des relations entrantes (migration 0004) : recoupements, vue du dossier et voisins communs sans parcours complet des tables.
 
 ### Modifié
 
 - Pages de 100 éléments au lieu de 50 : deux fois plus de relations pour le même nombre de requêtes.
 - Écart minimal entre deux requêtes ramené d'une seconde à 250 ms ; le rythme suit désormais l'état annoncé par GitHub.
 - Une réponse 304 authentifiée n'est plus comptée dans le budget du scan.
+- Écriture des observations par lots (REM-31) : une page de collecte ou un paquet de 1 000 lignes d'import en cinq requêtes au plus. Un instantané de 250 000 dépôts s'importe en 29 s au lieu de 207 s sur la machine de développement, avec les mêmes empreintes.
 
 ## [0.2.0] — 2026-10-11
 

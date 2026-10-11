@@ -1,6 +1,8 @@
-import { CircleDot, FolderSearch, LogOut, Plus } from 'lucide-react';
-import { initials, roleLabel } from '../format';
-import type { Investigation, User } from '../types';
+import { useEffect, useState } from 'react';
+import { CircleDot, FolderSearch, LogOut, Plus, Search } from 'lucide-react';
+import { api } from '../api';
+import { initials, kindLabel, roleLabel } from '../format';
+import type { Found, Investigation, User } from '../types';
 
 type Props = {
   user: User;
@@ -11,13 +13,77 @@ type Props = {
   onLogout: () => void;
 };
 
+/** Pause after the last keystroke before searching. */
+const SEARCH_DELAY_MS = 250;
+
+/** Accounts and repositories observed in the analyst's investigations, by name fragment. */
+function useSearch(query: string) {
+  const [found, setFound] = useState<Found[]>([]);
+  const [searched, setSearched] = useState('');
+  const text = query.trim();
+  useEffect(() => {
+    if (text.length < 2) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      api<Found[]>(`/search?q=${encodeURIComponent(text)}`)
+        .catch(() => [])
+        .then((rows) => {
+          if (live) {
+            setFound(rows);
+            setSearched(text);
+          }
+        });
+    }, SEARCH_DELAY_MS);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [text]);
+  const current = text.length >= 2 && searched === text;
+  return { found: current ? found : [], done: current };
+}
+
 export function Sidebar({ user, investigations, activeId, onSelect, onCreate, onLogout }: Props) {
+  const [query, setQuery] = useState('');
+  const { found, done } = useSearch(query);
   return (
     <aside className="sidebar">
       <div className="brand">
         <CircleDot /> OBSERVATORY
       </div>
       <p className="eyebrow">ESPACE D’ANALYSE</p>
+      <label className="sidebar-search">
+        <Search size={15} />
+        <input
+          type="search"
+          aria-label="Rechercher dans tous les dossiers"
+          placeholder="Compte ou dépôt…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {done && (
+        <div className="search-results" aria-label="Résultats de recherche">
+          {found.length === 0 && <p className="search-empty">Aucune entité observée sous ce nom.</p>}
+          {found.map((entity) => (
+            <div className="search-result" key={entity.id}>
+              {entity.label}
+              <small>{kindLabel[entity.kind] ?? entity.kind}</small>
+              {entity.investigations.map((investigation) => (
+                <button
+                  key={investigation.id}
+                  onClick={() => {
+                    onSelect(investigation.id);
+                    setQuery('');
+                  }}
+                >
+                  {investigation.title}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="nav-heading">
         <span>Investigations</span>
         <button className="icon" aria-label="Nouvelle investigation" onClick={onCreate}>

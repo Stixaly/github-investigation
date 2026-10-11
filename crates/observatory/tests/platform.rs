@@ -379,3 +379,71 @@ async fn graph_bounds_and_evidence() {
     let overlaps = client.get(&format!("/api/v1/entities/{focus}/overlaps")).await.1;
     assert_eq!(overlaps[0]["title"], "Bornes");
 }
+
+#[tokio::test]
+async fn investigation_graph_search_and_common_neighbours() {
+    let Some(db) = database().await else { return };
+    let investigation = observatory::demo::create_demo(&db.pool, "Alice").await.unwrap();
+    let mut client = Client::new(&db.pool);
+    client.login("alice").await;
+
+    // Both demo scans in one view: September's entities are all observed again in October.
+    let (status, graph) = client.get(&format!("/api/v1/investigations/{investigation}/graph")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (graph["temporal_mode"].as_str(), graph["scan_count"].as_i64()),
+        (Some("investigation"), Some(2))
+    );
+    let nodes = graph["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 14);
+    let (_, first) = client.get(&format!("/api/v1/investigations/{investigation}/graph?limit=1")).await;
+    assert_eq!(first["nodes"][0]["label"], "demo-lab/observatory", "the seed is selected first");
+    assert_eq!(first["truncated"], true);
+    let id = |label: &str| {
+        nodes.iter().find(|node| node["label"] == label).unwrap()["id"].as_str().unwrap().to_owned()
+    };
+    let (alice, bob) = (id("demo-alice"), id("demo-bob"));
+    let (_, focused) =
+        client.get(&format!("/api/v1/investigations/{investigation}/graph?focus={alice}&limit=50")).await;
+    let focused: Vec<&str> =
+        focused["nodes"].as_array().unwrap().iter().map(|node| node["label"].as_str().unwrap()).collect();
+    assert!(focused.contains(&"demo-alice/observatory") && !focused.contains(&"demo-bob"));
+
+    // Search across the analyst's investigations, closest names first.
+    let (status, found) = client.get("/api/v1/search?q=alice").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(found[0]["label"], "demo-alice");
+    assert_eq!(
+        found[0]["investigations"],
+        json!([{"id": investigation, "title": "Terrain de démonstration"}])
+    );
+    assert!(found.as_array().unwrap().iter().any(|entity| entity["label"] == "demo-alice/observatory"));
+    assert_eq!(client.get("/api/v1/search?q=%25").await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(client.get("/api/v1/search?q=a_").await.1, json!([]), "wildcards are taken literally");
+
+    // Two contributors share the demo repository.
+    let (status, common) =
+        client.get(&format!("/api/v1/investigations/{investigation}/common?a={alice}&b={bob}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let shared = common["common"].as_array().unwrap();
+    assert_eq!(shared.len(), 1);
+    assert_eq!(
+        (&shared[0]["label"], &shared[0]["with_a"], &shared[0]["with_b"]),
+        (&json!("demo-lab/observatory"), &json!(["CONTRIBUTED_TO"]), &json!(["CONTRIBUTED_TO"]))
+    );
+    let same = format!("/api/v1/investigations/{investigation}/common?a={alice}&b={alice}");
+    assert_eq!(client.get(&same).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Outside the investigation, nothing is found and nothing is shown.
+    let mut outsider = Client::new(&db.pool);
+    outsider.login("bob").await;
+    assert_eq!(outsider.get("/api/v1/search?q=alice").await.1, json!([]));
+    assert_eq!(
+        outsider.get(&format!("/api/v1/investigations/{investigation}/graph")).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        outsider.get(&format!("/api/v1/investigations/{investigation}/common?a={alice}&b={bob}")).await.0,
+        StatusCode::NOT_FOUND
+    );
+}

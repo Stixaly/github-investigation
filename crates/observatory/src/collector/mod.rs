@@ -8,9 +8,11 @@
 
 pub mod budget;
 pub mod cache;
+pub mod graphql;
 pub mod http;
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -24,9 +26,10 @@ use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 pub use self::budget::{CORE, reserve_request};
-pub use self::http::{FetchError, GitHub, Response};
+use self::graphql::{GRAPHQL, PageError};
+pub use self::http::{FetchError, Fetched, GitHub, Response};
 use crate::model::Scan;
-use crate::store::{Role, ingest_github};
+use crate::store::{Batch, EntityRef, Role, ingest_github};
 
 /// Pages lues au plus par endpoint dans un scan, reprises comprises.
 pub const MAX_PAGES: usize = 2;
@@ -48,6 +51,8 @@ pub struct Settings {
     pub retention: Duration,
     /// Attente avant la première nouvelle tentative ; triplée ensuite, avec une part aléatoire.
     pub backoff: Duration,
+    /// Scans exécutés en même temps par un worker.
+    pub concurrency: usize,
 }
 
 impl Default for Settings {
@@ -57,6 +62,7 @@ impl Default for Settings {
             freshness: Duration::from_secs(600),
             retention: Duration::from_hours(7 * 24),
             backoff: Duration::from_secs(1),
+            concurrency: 2,
         }
     }
 }
@@ -68,9 +74,11 @@ impl Settings {
         freshness: Duration::ZERO,
         retention: Duration::from_hours(7 * 24),
         backoff: Duration::ZERO,
+        concurrency: 1,
     };
 
-    /// `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
+    /// `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS`, `GITHUB_CACHE_RETENTION_DAYS`
+    /// et `WORKER_CONCURRENCY`.
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
     }
@@ -91,6 +99,11 @@ impl Settings {
             retention: number("GITHUB_CACHE_RETENTION_DAYS", 365)?
                 .map_or(defaults.retention, |days| Duration::from_hours(days * 24)),
             backoff: defaults.backoff,
+            concurrency: match number("WORKER_CONCURRENCY", 8)? {
+                Some(0) => anyhow::bail!("WORKER_CONCURRENCY : 1 au moins"),
+                Some(lanes) => usize::try_from(lanes)?,
+                None => defaults.concurrency,
+            },
         })
     }
 }
@@ -224,9 +237,9 @@ impl<'a> Collector<'a> {
     }
 
     /// Attend sur place une réservation proche ; une attente longue remet le scan en file.
-    async fn reserve(&self) -> Result<(), CollectError> {
+    async fn reserve(&self, resource: &str) -> Result<(), CollectError> {
         loop {
-            match reserve_request(self.pool, self.scan, CORE, self.settings.min_interval).await {
+            match reserve_request(self.pool, self.scan, resource, self.settings.min_interval).await {
                 Err(CollectError::RateLimited(delay)) if delay <= SHORT_WAIT => {
                     tokio::time::sleep(Duration::from_secs_f64(delay)).await;
                 }
@@ -248,31 +261,7 @@ impl<'a> Collector<'a> {
             });
         }
         let etag = cached.as_ref().and_then(|hit| hit.etag.as_deref());
-        let mut attempt = 0;
-        let fetched = loop {
-            self.reserve().await?;
-            let fetched = self.github.fetch(url, etag).await;
-            Stats::add(&self.stats.requests);
-            let refund = self.github.authenticated() && matches!(fetched.result, Ok(Response::NotModified));
-            if let Some(rate) = &fetched.rate {
-                budget::record_rate(self.pool, rate, refund).await?;
-            }
-            if refund {
-                budget::refund_request(self.pool, self.scan).await?;
-            }
-            if let Some(seconds) = fetched.pause {
-                let resource = fetched.rate.as_ref().map_or(CORE, |rate| rate.resource.as_str());
-                budget::pause(self.pool, resource, seconds).await?;
-            }
-            match &fetched.result {
-                Err(error) if error.is_transient() && attempt < MAX_RETRIES => {
-                    attempt += 1;
-                    Stats::add(&self.stats.retries);
-                    tokio::time::sleep(backoff(self.settings.backoff, attempt)).await;
-                }
-                _ => break fetched,
-            }
-        };
+        let fetched = self.send(CORE, || self.github.fetch(url, etag)).await?;
         match fetched.result {
             Ok(Response::Fresh { payload, link, etag }) => {
                 cache::store(self.pool, url, identity, etag.as_deref(), &payload, &link).await?;
@@ -288,6 +277,40 @@ impl<'a> Collector<'a> {
             }
             Err(FetchError::RateLimited(delay)) => Err(CollectError::RateLimited(delay)),
             Err(other) => Err(CollectError::Fetch(other.to_string())),
+        }
+    }
+
+    /// Envoie une requête réservée sur `resource`, avec nouvelles tentatives bornées,
+    /// et reporte ce que GitHub annonce de son quota.
+    async fn send<F, R>(&self, resource: &str, request: F) -> Result<Fetched, CollectError>
+    where
+        F: Fn() -> R,
+        R: Future<Output = Fetched>,
+    {
+        let mut attempt = 0;
+        loop {
+            self.reserve(resource).await?;
+            let fetched = request().await;
+            Stats::add(&self.stats.requests);
+            let refund = self.github.authenticated() && matches!(fetched.result, Ok(Response::NotModified));
+            if let Some(rate) = &fetched.rate {
+                budget::record_rate(self.pool, rate, refund).await?;
+            }
+            if refund {
+                budget::refund_request(self.pool, self.scan).await?;
+            }
+            if let Some(seconds) = fetched.pause {
+                let paused = fetched.rate.as_ref().map_or(resource, |rate| rate.resource.as_str());
+                budget::pause(self.pool, paused, seconds).await?;
+            }
+            match &fetched.result {
+                Err(error) if error.is_transient() && attempt < MAX_RETRIES => {
+                    attempt += 1;
+                    Stats::add(&self.stats.retries);
+                    tokio::time::sleep(backoff(self.settings.backoff, attempt)).await;
+                }
+                _ => return Ok(fetched),
+            }
         }
     }
 
@@ -380,14 +403,17 @@ impl<'a> Collector<'a> {
                 progress.insert("status".into(), status.into());
             }
             let following_url = following.as_ref().ok().cloned().flatten();
+            if items.iter().any(|item| !item.is_object()) {
+                return Err(CollectError::Fetch("Objet GitHub invalide".into()));
+            }
+            let root = EntityRef::Id(root);
+            let mut batch = Batch::default();
+            for item in &items {
+                batch.ingest_github(self.scan.id, role, item, &url, page.observed, Some(&root));
+            }
             let mut tx = self.pool.begin().await?;
             guard(&mut tx, self.scan).await?;
-            for item in &items {
-                if !item.is_object() {
-                    return Err(CollectError::Fetch("Objet GitHub invalide".into()));
-                }
-                ingest_github(&mut tx, self.scan.id, role, item, &url, page.observed, Some(root)).await?;
-            }
+            batch.write(&mut tx).await?;
             let state = Value::Object(progress.clone());
             save_checkpoint(&mut tx, self.scan.id, role.as_str(), following_url.as_deref(), &state, false)
                 .await?;
@@ -399,8 +425,83 @@ impl<'a> Collector<'a> {
         Ok(())
     }
 
+    /// Lit les dépôts d'un compte par GraphQL, page par page, comme [`Self::endpoint`] ;
+    /// `next` porte le curseur (vide pour la première page).
+    async fn graphql_repositories(
+        &self,
+        login: &str,
+        next: &mut Option<String>,
+        result: &mut Map<String, Value>,
+    ) -> Result<(), CollectError> {
+        let endpoint = format!("{}/graphql", self.github.base());
+        while let Some(cursor) = next.clone() {
+            if count(result, "pages") >= MAX_PAGES as u64 {
+                return Ok(());
+            }
+            let variables =
+                json!({"login": login, "after": Some(cursor.as_str()).filter(|cursor| !cursor.is_empty())});
+            let fetched =
+                self.send(GRAPHQL, || self.github.graphql(graphql::REPOSITORIES, &variables)).await?;
+            let payload = match fetched.result {
+                Ok(Response::Fresh { payload, .. }) => payload,
+                Ok(Response::NotModified) => {
+                    return Err(CollectError::Fetch("Réponse GraphQL inattendue".into()));
+                }
+                Err(FetchError::RateLimited(delay)) => return Err(CollectError::RateLimited(delay)),
+                Err(other) => return Err(CollectError::Fetch(other.to_string())),
+            };
+            let page = match graphql::page(&payload) {
+                Ok(page) => page,
+                Err(PageError::RateLimited) => {
+                    budget::pause(self.pool, GRAPHQL, 60.0).await?;
+                    return Err(CollectError::RateLimited(60.0));
+                }
+                Err(error) => return Err(CollectError::Fetch(error.to_string())),
+            };
+            let source = format!("{endpoint}#repositoryOwner={login}&after={cursor}");
+            let observed = Utc::now();
+            let mut batch = Batch::default();
+            for node in &page.nodes {
+                if let Some(item) = graphql::rest_repository(node) {
+                    batch.ingest_received(
+                        self.scan.id,
+                        Role::Repositories,
+                        &item,
+                        (node, &source),
+                        observed,
+                        None,
+                    );
+                }
+            }
+            let mut progress = result.clone();
+            increment(&mut progress, "items", page.nodes.len());
+            increment(&mut progress, "pages", 1);
+            if page.next.is_none() {
+                progress.insert("status".into(), "complete".into());
+            }
+            let mut tx = self.pool.begin().await?;
+            guard(&mut tx, self.scan).await?;
+            batch.write(&mut tx).await?;
+            let state = Value::Object(progress.clone());
+            save_checkpoint(
+                &mut tx,
+                self.scan.id,
+                Role::Repositories.as_str(),
+                page.next.as_deref(),
+                &state,
+                false,
+            )
+            .await?;
+            tx.commit().await?;
+            *result = progress;
+            *next = page.next;
+        }
+        Ok(())
+    }
+
     /// Profil borné : la seed, puis ses contributeurs, forks, issues et événements
-    /// (dépôt) ou ses dépôts (compte). Retourne `succeeded` ou `partial`.
+    /// (dépôt) ou ses dépôts (compte, par GraphQL si l'accès est authentifié).
+    /// Retourne `succeeded` ou `partial`.
     ///
     /// Un scan repris saute les étapes terminées et reprend la suivante à sa
     /// dernière page enregistrée.
@@ -431,16 +532,19 @@ impl<'a> Collector<'a> {
                 json!({"status": "not_requested", "reason": "Connecteur à qualifier"}),
             );
             vec![
-                (Role::Contributors, format!("{root_url}/contributors?per_page={PER_PAGE}")),
-                (Role::Forks, format!("{root_url}/forks?per_page={PER_PAGE}")),
-                (Role::Issues, format!("{root_url}/issues?state=all&per_page={PER_PAGE}")),
-                (Role::Events, format!("{root_url}/events?per_page={PER_PAGE}")),
+                (Role::Contributors, Some(format!("{root_url}/contributors?per_page={PER_PAGE}"))),
+                (Role::Forks, Some(format!("{root_url}/forks?per_page={PER_PAGE}"))),
+                (Role::Issues, Some(format!("{root_url}/issues?state=all&per_page={PER_PAGE}"))),
+                (Role::Events, Some(format!("{root_url}/events?per_page={PER_PAGE}"))),
             ]
+        } else if self.github.authenticated() {
+            // `None`: the GraphQL pivot, which also brings the upstream of each fork.
+            vec![(Role::Repositories, None)]
         } else {
             let owner = if root.organization { "orgs" } else { "users" };
             vec![(
                 Role::Repositories,
-                format!("{base}/{owner}/{}/repos?type=owner&per_page={PER_PAGE}", seed.path),
+                Some(format!("{base}/{owner}/{}/repos?type=owner&per_page={PER_PAGE}", seed.path)),
             )]
         };
         for (role, url) in plan {
@@ -453,15 +557,26 @@ impl<'a> Collector<'a> {
             result.insert("status".into(), "partial".into());
             result.insert("items".into(), 0.into());
             result.insert("pages".into(), 0.into());
-            let mut next = Some(url);
-            if let Some(checkpoint) = checkpoint {
+            if url.is_none() {
+                result.insert("via".into(), "graphql".into());
+            }
+            // An empty cursor starts the GraphQL pivot at its first page.
+            let mut next = Some(url.clone().unwrap_or_default());
+            // A checkpoint written through the other API (token added or removed) is not reused.
+            let same_api = |checkpoint: &Checkpoint| {
+                (checkpoint.state.get("via").and_then(Value::as_str) == Some("graphql")) == url.is_none()
+            };
+            if let Some(checkpoint) = checkpoint.filter(same_api) {
                 result.extend(checkpoint.state.as_object().cloned().unwrap_or_default());
                 next = checkpoint.next_url;
             }
             // GitHub paginates /repos/<owner>/<name> through /repositories/<stable id>.
             let canonical = root.id.filter(|_| repository).map(|id| format!("/repositories/{id}/{name}"));
-            let outcome =
-                self.endpoint(role, &mut next, root.entity, canonical.as_deref(), &mut result).await;
+            let outcome = if url.is_some() {
+                self.endpoint(role, &mut next, root.entity, canonical.as_deref(), &mut result).await
+            } else {
+                self.graphql_repositories(&seed.path, &mut next, &mut result).await
+            };
             if outcome.is_ok() && result["status"] == "partial" {
                 result.insert("reason".into(), "Plafond de deux pages par endpoint atteint".into());
             }
@@ -540,6 +655,9 @@ mod tests {
         );
         assert!(parse(&[("GITHUB_MIN_INTERVAL_MS", "fast")]).is_err());
         assert!(parse(&[("GITHUB_CACHE_RETENTION_DAYS", "100000")]).is_err());
+        assert_eq!(parse(&[("WORKER_CONCURRENCY", "4")]).unwrap().concurrency, 4);
+        assert!(parse(&[("WORKER_CONCURRENCY", "0")]).is_err());
+        assert!(parse(&[("WORKER_CONCURRENCY", "9")]).is_err());
     }
 
     #[test]

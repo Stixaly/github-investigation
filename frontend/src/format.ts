@@ -22,6 +22,13 @@ export const roleLabel: Record<Role, string> = {
   reader: 'Lecteur',
 };
 
+export const kindLabel: Record<string, string> = {
+  Account: 'Compte',
+  Repository: 'Dépôt',
+  Issue: 'Issue',
+  PullRequest: 'Pull request',
+};
+
 export function initials(login: string): string {
   return login.slice(0, 2).toUpperCase();
 }

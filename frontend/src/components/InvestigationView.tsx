@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react';
 import { Users } from 'lucide-react';
 import { api } from '../api';
 import type { Action } from '../hooks/useAction';
-import { useNotesAndMembers, useScanGraph, useScans } from '../hooks/useInvestigationData';
+import { useGraph, useNotesAndMembers, useScans } from '../hooks/useInvestigationData';
 import type { Investigation, Scan } from '../types';
+import { ALL_SCANS } from '../types';
 import { AccessTab } from './AccessTab';
 import { ExplorationTab } from './ExplorationTab';
 import { NotesTab } from './NotesTab';
@@ -36,8 +37,16 @@ export function InvestigationView({
   const [tab, setTab] = useState<Tab>('graph');
   const [chosenScan, setChosenScan] = useState('');
   const [scans, setScans] = useScans(investigation.id, setError);
-  const scan = scans.find((row) => row.id === chosenScan) ?? scans[0];
-  const [graph, setGraph] = useScanGraph(scan?.id ?? '', scan?.status, setError);
+  const cumulative = chosenScan === ALL_SCANS;
+  const scan = cumulative ? undefined : (scans.find((row) => row.id === chosenScan) ?? scans[0]);
+  const graphPath = cumulative
+    ? `/investigations/${investigation.id}/graph`
+    : scan
+      ? `/scans/${scan.id}/graph`
+      : '';
+  // The cumulative view changes whenever any scan does.
+  const version = cumulative ? scans.map((row) => row.status).join() : (scan?.status ?? '');
+  const [graph, setGraph] = useGraph(graphPath, version, setError);
   const { notes, setNotes, members, setMembers } = useNotesAndMembers(investigation.id, tab, setError);
   const canWrite = investigation.role !== 'reader';
 
@@ -71,6 +80,8 @@ export function InvestigationView({
           canWrite={canWrite}
           scans={scans}
           scan={scan}
+          view={cumulative ? ALL_SCANS : (scan?.id ?? '')}
+          graphPath={graphPath}
           graph={graph}
           action={action}
           onScanCreated={(created) => {

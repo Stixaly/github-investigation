@@ -27,20 +27,21 @@ export function useScans(investigationId: string, onError: (message: string) => 
   return [scans, setScans] as const;
 }
 
-/** Graph of a scan, reloaded when the scan changes state (a running scan fills in). */
-export function useScanGraph(scanId: string, status: string | undefined, onError: (message: string) => void) {
+/** Graph at `path` (a scan or the whole investigation), reloaded when `version`
+ *  changes: a running scan fills in. */
+export function useGraph(path: string, version: string, onError: (message: string) => void) {
   const [graph, setGraph] = useState<GraphData | null>(null);
   useEffect(() => {
-    if (!scanId) return;
+    if (!path) return;
     let live = true;
-    api<GraphData>(`/scans/${scanId}/graph`)
+    api<GraphData>(path)
       .then((data) => live && setGraph(data))
       .catch((failure: Error) => live && onError(failure.message));
     return () => {
       live = false;
     };
-  }, [scanId, status, onError]);
-  return [scanId ? graph : null, setGraph] as const;
+  }, [path, version, onError]);
+  return [path ? graph : null, setGraph] as const;
 }
 
 /** Notes and members, reloaded whenever the analyst switches tab. */

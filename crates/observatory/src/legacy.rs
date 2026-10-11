@@ -23,12 +23,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::security::{Access, require_access};
-use crate::store::{
-    EntityKind, Observation, Precision, RelationKind, account, entity, evidence, relation, truthy,
-};
+use crate::store::{Batch, EntityKind, EntityRef, Observation, Precision, RelationKind, truthy};
 
-/// Lignes validées entre deux commits.
-const BATCH: usize = 200;
+/// Lignes préparées puis écrites ensemble, dans une transaction.
+const BATCH: usize = 1000;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Counters {
@@ -198,22 +196,21 @@ async fn load(
     precision: Precision,
     counters: &mut Counters,
 ) -> anyhow::Result<()> {
-    let mut identities: HashMap<String, Uuid> = HashMap::new();
+    let mut identities: HashMap<String, EntityRef> = HashMap::new();
 
     let (mut users, reader) = stream::<(String, Value)>(users_path.to_owned(), |file, send| {
         for_each_user(file, |name, user| send((name, user)))
     });
-    let mut tx = pool.begin().await?;
+    let mut batch = Batch::default();
     let mut pending: usize = 0;
     while let Some((name, user)) = users.recv().await {
         if !user.is_object() || user.get("error").is_some() {
             counters.user_errors += 1;
             continue;
         }
-        let proof =
-            evidence(&mut tx, &user, &format!("legacy:sha256:{users_digest}:users_db.json:{name}")).await?;
+        let proof = batch.evidence(&user, &format!("legacy:sha256:{users_digest}:users_db.json:{name}"));
         let observation = Observation { scan_id, proof: &proof, observed, precision };
-        match account(&mut tx, &observation, Some(&user), true).await? {
+        match batch.account(&observation, Some(&user), true) {
             Some(identity) => {
                 identities.insert(name.to_lowercase(), identity);
                 counters.users += 1;
@@ -222,52 +219,55 @@ async fn load(
         }
         pending += 1;
         if pending.is_multiple_of(BATCH) {
-            tx.commit().await?;
-            tx = pool.begin().await?;
+            flush(pool, std::mem::take(&mut batch)).await?;
         }
     }
-    tx.commit().await?;
+    flush(pool, batch).await?;
     reader.await??;
 
     let (mut repositories, reader) = stream::<(String, Value)>(repos_path.to_owned(), |file, send| {
         for_each_repository(file, |owner, repository| send((owner.to_owned(), repository)))
     });
-    let mut tx = pool.begin().await?;
+    let mut batch = Batch::default();
     while let Some((owner_name, repository)) = repositories.recv().await {
         let full_name = repository.get("full_name").and_then(Value::as_str).filter(|name| !name.is_empty());
         let Some(full_name) = full_name.filter(|_| !truthy(repository.get("private"))) else {
             counters.skipped += 1;
             continue;
         };
-        let proof = evidence(
-            &mut tx,
-            &repository,
-            &format!("legacy:sha256:{repos_digest}:repos_db.json:{owner_name}"),
-        )
-        .await?;
+        let proof =
+            batch.evidence(&repository, &format!("legacy:sha256:{repos_digest}:repos_db.json:{owner_name}"));
         let observation = Observation { scan_id, proof: &proof, observed, precision };
         let stable = crate::store::external_id(repository.get("id"));
         let provisional = stable.is_none();
         let external =
             stable.unwrap_or_else(|| format!("legacy:{repos_digest}:{}", full_name.to_lowercase()));
         let target =
-            entity(&mut tx, &observation, EntityKind::Repository, &external, full_name, None, provisional)
-                .await?;
+            batch.entity(&observation, EntityKind::Repository, &external, full_name, None, provisional);
         // Link the owner only when the repository name agrees with the bucket it was stored under.
         let owner = identities.get(&owner_name.to_lowercase());
         let prefix = full_name.split('/').next().unwrap_or_default();
-        if let Some(&owner) = owner.filter(|_| prefix.to_lowercase() == owner_name.to_lowercase()) {
-            relation(&mut tx, &observation, owner, RelationKind::Owns, target, None).await?;
+        if let Some(owner) = owner.filter(|_| prefix.to_lowercase() == owner_name.to_lowercase()) {
+            batch.relation(&observation, owner.clone(), RelationKind::Owns, target, None);
         }
         counters.repositories += 1;
         if counters.repositories.is_multiple_of(BATCH as u64) {
-            tx.commit().await?;
-            tx = pool.begin().await?;
+            flush(pool, std::mem::take(&mut batch)).await?;
         }
     }
-    tx.commit().await?;
+    flush(pool, batch).await?;
     reader.await??;
     Ok(())
+}
+
+/// Écrit un lot dans sa propre transaction.
+async fn flush(pool: &PgPool, batch: Batch) -> sqlx::Result<()> {
+    if batch.is_empty() {
+        return Ok(());
+    }
+    let mut tx = pool.begin().await?;
+    batch.write(&mut tx).await?;
+    tx.commit().await
 }
 
 #[cfg(test)]
