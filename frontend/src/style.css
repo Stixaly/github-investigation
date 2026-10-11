@@ -841,6 +841,64 @@ td {
   font-size: 10px;
   margin-top: 32px;
 }
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 9px 12px;
+  background: #1d3a3f;
+  border-radius: 6px;
+  color: #8fafa6;
+}
+.sidebar-search input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #fff;
+  font-size: 12px;
+}
+.sidebar-search:focus-within {
+  box-shadow: 0 0 0 2px #4f7d73;
+}
+.search-results {
+  max-height: 38vh;
+  overflow: auto;
+  margin: -10px 0 18px;
+}
+.search-result {
+  padding: 9px 10px;
+  border-bottom: 1px solid #28454a;
+  font-size: 12px;
+  color: #dcebe6;
+  overflow-wrap: anywhere;
+}
+.search-result small {
+  display: block;
+  margin: 3px 0 6px;
+  color: #8fafa6;
+  font-size: 10px;
+}
+.search-result button {
+  margin: 2px 4px 0 0;
+  padding: 4px 8px;
+  background: #28454a;
+  color: #dcebe6;
+  font-size: 10px;
+}
+.search-empty {
+  padding: 8px 10px;
+  color: #8fafa6;
+  font-size: 11px;
+}
+.overlap small {
+  margin-left: auto;
+  padding-left: 8px;
+  color: #8b988e;
+  font-size: 10px;
+}
 @media (min-width: 1700px) {
   .workspace {
     padding: 0 65px;

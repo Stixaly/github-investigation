@@ -16,6 +16,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 - Variables facultatives `GITHUB_MIN_INTERVAL_MS`, `GITHUB_CACHE_FRESHNESS_SECONDS` et `GITHUB_CACHE_RETENTION_DAYS`.
 - Pivot compte → dépôts par l'API GraphQL lorsqu'un token est configuré : chaque page de 100 dépôts apporte aussi le dépôt d'origine des forks. Les nœuds GraphQL sont conservés tels que reçus comme preuves.
 - `WORKER_CONCURRENCY` (2 par défaut, 8 au plus) : scans exécutés en même temps par un worker, sous le même rythme GitHub.
+- Graphe cumulé d'un dossier (`GET /api/v1/investigations/{id}/graph`) et option « Tout le dossier » de l'exploration : chaque entité et relation avec sa dernière observation.
+- Recherche par fragment de nom dans tous les dossiers de l'analyste (`GET /api/v1/search`), index trigrammes `pg_trgm` (migration 0004), depuis la barre latérale.
+- Voisins communs de deux entités dans un dossier (`GET /api/v1/investigations/{id}/common`), depuis l'inspecteur.
+- « Collecter ses relations » : lance un scan depuis l'inspecteur d'un compte ou d'un dépôt.
+- Index des observations par entité et par relation, et des relations entrantes (migration 0004) : recoupements, vue du dossier et voisins communs sans parcours complet des tables.
 
 ### Modifié
 

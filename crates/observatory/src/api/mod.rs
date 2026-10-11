@@ -50,6 +50,9 @@ pub fn router(state: AppState) -> Router {
             get(investigations::notes).post(investigations::add_note),
         )
         .route("/investigations/{investigation_id}/scans", get(scans::list).post(scans::create))
+        .route("/investigations/{investigation_id}/graph", get(graph::investigation_graph))
+        .route("/investigations/{investigation_id}/common", get(graph::common))
+        .route("/search", get(graph::search))
         .route("/scans/{scan_id}/cancel", post(scans::cancel))
         .route("/scans/{scan_id}/graph", get(graph::graph))
         .route("/scans/{scan_id}/compare/{other_id}", get(graph::compare))

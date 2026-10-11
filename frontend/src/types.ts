@@ -66,5 +66,15 @@ export type Edge = {
 
 export type GraphData = { nodes: Node[]; edges: Edge[]; truncated: boolean; notice: string };
 
+/** Entity found by name, with the analyst's investigations that observed it. */
+export type Found = { id: string; kind: string; label: string; investigations: Overlap[] };
+
+export type CommonNeighbour = { id: string; kind: string; label: string; with_a: string[]; with_b: string[] };
+
+export type CommonNeighbours = { a: string; b: string; common: CommonNeighbour[]; notice: string };
+
+/** View of the exploration tab that gathers every scan of the investigation. */
+export const ALL_SCANS = 'all';
+
 /** Pending scans may still consume the GitHub budget and can be cancelled. */
 export const PENDING: ScanStatus[] = ['queued', 'running', 'waiting_quota'];

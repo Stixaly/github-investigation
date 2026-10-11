@@ -22,7 +22,7 @@ Le backend est un binaire Rust unique, lancé avec des rôles différents dans d
 | Domaine | Comportement disponible | Limite actuelle |
 |---|---|---|
 | Identités | IDs GitHub canoniques, données d'observation conservées dans chaque scan | Résolution automatique des identités historiques provisoires à venir |
-| Graphe | Accounts, repositories, issues, PR ; relations orientées et preuve JSON | Voisinage borné d'une seule seed, sans expansion récursive |
+| Graphe | Accounts, repositories, issues, PR ; relations orientées et preuve JSON | Vue d'un scan ou cumulée d'un dossier, voisins communs ; pas d'expansion récursive automatique ni de chemins longs |
 | Temps | Observation, enregistrement et date d'événement lorsque disponible ; vue d'un scan et comparaison | Pas encore de requête globale `as_of` / `known_at`, ni d'intervalle de validité reconstruit |
 | Corpus partagé | Entités, relations et preuves dédupliquées ; une observation ne recopie pas sa preuve | Deux jobs similaires de dossiers différents peuvent encore consommer deux fois l'API |
 | Preuves | JSON stocké tel que reçu, nombres compris ; empreinte identique à la 0.1 | Format d'empreinte figé tant qu'aucune colonne de version n'existe |
@@ -32,7 +32,7 @@ Le backend est un binaire Rust unique, lancé avec des rôles différents dans d
 | GitHub | Rythme partagé par ressource de quota d'après les en-têtes GitHub, requêtes conditionnelles et cache cloisonné par accès, nouvelles tentatives bornées, taille/durée bornées, couverture et compteurs par scan ([ADR 0005](adr/0005-collecte-econome.md)) | Un seul profil de collecte, deux pages de 100 objets par endpoint ; GraphQL seulement pour les dépôts d'un compte |
 | Historique | Import JSON en flux, idempotent, écrit par paquets de 1 000 lignes, date inconnue ou précision au jour | Pickles ignorés, anciennes catégories non reconstruites sans source explicite |
 | Schéma | Migrations numérotées vérifiées par empreinte, reprise d'une base 0.1 ([ADR 0003](adr/0003-migrations-versionnees.md)) | Pas encore de procédure de retour arrière automatisée |
-| Interface | Dossiers, graphe 3D/2D, preuves, voisinage, filtres, notes, accès, comparaison | 200 dossiers / 100 scans et notes par liste ; pagination à ajouter |
+| Interface | Dossiers, graphe 3D/2D par scan ou par dossier, preuves, voisinage, voisins communs, collecte depuis une entité, recherche dans tous les dossiers, filtres, notes, accès, comparaison | 200 dossiers / 100 scans et notes par liste ; pagination à ajouter |
 | Durcissement | Images Alpine épinglées, binaire statique, non root, lecture seule, capabilities retirées, secrets séparés | Pas encore de SBOM, de signature d'image ni de filtrage egress du serveur |
 
 Le graphe affiché contient au plus 500 nœuds et 2 000 liens ; la limite par défaut est de 300 nœuds. Le filtre de liste de l'interface porte sur les nœuds chargés ; l'API dispose aussi d'un filtre `q` (motif pris littéralement) et d'un voisinage `focus`, limités au scan autorisé.
