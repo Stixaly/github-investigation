@@ -12,6 +12,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::collector::{CollectError, Collector, GitHub, Settings, cache};
+use crate::evaluation;
 use crate::model::Scan;
 
 /// Reprises tolérées pour un scan dont le worker a disparu.
@@ -166,7 +167,35 @@ async fn run_lane(
                 }
                 continue;
             }
-            Ok(None) => Duration::from_secs(2),
+            // No scan waiting: evaluate a keyword list, if one is queued.
+            Ok(None) => match evaluation::claim(pool).await {
+                Ok(Some(run)) => {
+                    tracing::info!(run = %run.id, "rule run claimed");
+                    tokio::select! {
+                        result = evaluation::execute(pool, &run) => {
+                            if let Err(error) = result {
+                                tracing::error!(run = %run.id, %error, "rule run failed");
+                                let reason = "Erreur interne d'évaluation ; consulter le journal du worker";
+                                if let Err(error) = evaluation::finish(pool, &run, "failed", Some(reason)).await {
+                                    tracing::error!(run = %run.id, %error, "could not record rule run failure");
+                                }
+                            }
+                        }
+                        _ = stopped.changed() => {
+                            if let Err(error) = evaluation::release(pool, &run).await {
+                                tracing::error!(run = %run.id, %error, "could not release rule run");
+                            }
+                            return;
+                        }
+                    }
+                    continue;
+                }
+                Ok(None) => Duration::from_secs(2),
+                Err(error) => {
+                    tracing::error!(%error, "rule run claim failed");
+                    Duration::from_secs(5)
+                }
+            },
             Err(error) => {
                 tracing::error!(%error, "worker loop failed");
                 Duration::from_secs(5)

@@ -18,6 +18,8 @@ const COUNTED: &[&str] = &[
     "http_cache",
     "scans",
     "keyword_list_versions",
+    "rule_matches",
+    "triage_items",
 ];
 /// Jours de croissance relevés.
 const DAYS: i32 = 14;

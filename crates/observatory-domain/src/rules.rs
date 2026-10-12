@@ -343,6 +343,68 @@ impl Definition {
             .map(|rule| evaluate_rule(rule, &self.normalization, input))
             .collect()
     }
+
+    /// Évalue les règles actives qui portent sur ce type d'objet (`repository`, `account`) :
+    /// une règle sur des champs de dépôt n'a rien à dire d'un compte.
+    pub fn evaluate_kind(&self, kind: &str, input: &Map<String, Value>) -> Vec<RuleResult> {
+        self.rules
+            .iter()
+            .filter(|rule| rule.enabled && rule.applies_to(kind))
+            .map(|rule| evaluate_rule(rule, &self.normalization, input))
+            .collect()
+    }
+}
+
+impl Rule {
+    /// Vrai si une clause cite un champ de ce type d'objet (`repository`, `account`).
+    pub fn applies_to(&self, kind: &str) -> bool {
+        self.any
+            .iter()
+            .chain(&self.all)
+            .chain(&self.none)
+            .flat_map(|clause| &clause.fields)
+            .any(|field| field.split('.').next() == Some(kind))
+    }
+}
+
+/// Entrée du moteur tirée d'un objet observé, dans la forme REST de GitHub.
+///
+/// Un champ n'est renseigné que si l'objet le contient, éventuellement à `null` ;
+/// le README n'est jamais déduit des métadonnées. `None` pour un objet que les
+/// listes ne visent pas (issues, pull requests).
+pub fn observation_input(kind: &str, data: &Value) -> Option<(&'static str, Map<String, Value>)> {
+    let object = data.as_object()?;
+    let text = |key: &str| object.get(key).filter(|value| value.is_string() || value.is_null()).cloned();
+    let mut input = Map::new();
+    match kind {
+        "Repository" => {
+            if let Some(full_name) = object.get("full_name").and_then(Value::as_str) {
+                input.insert("repository.full_name".into(), full_name.into());
+                let name = full_name.rsplit('/').next().unwrap_or(full_name);
+                input.insert("repository.name".into(), name.into());
+            } else if let Some(name) = text("name") {
+                input.insert("repository.name".into(), name);
+            }
+            if let Some(description) = text("description") {
+                input.insert("repository.description".into(), description);
+            }
+            if let Some(Value::Array(topics)) = object.get("topics") {
+                let topics: Vec<Value> = topics.iter().filter(|topic| topic.is_string()).cloned().collect();
+                input.insert("repository.topics".into(), Value::Array(topics));
+            }
+            Some(("repository", input))
+        }
+        "Account" => {
+            if let Some(login) = text("login") {
+                input.insert("account.login".into(), login);
+            }
+            if let Some(name) = text("name") {
+                input.insert("account.name".into(), name);
+            }
+            Some(("account", input))
+        }
+        _ => None,
+    }
 }
 
 /// Une observation à évaluer : chaque champ est une chaîne, `null` (connu et vide)

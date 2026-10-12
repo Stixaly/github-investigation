@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, FlaskConical, Pencil, Plus, Send } from 'lucide-react';
+import { Download, FlaskConical, ListChecks, Pencil, Plus, Send } from 'lucide-react';
 import { api } from '../api';
 import { formatDate } from '../format';
 import type { Action } from '../hooks/useAction';
-import type { KeywordListSummary, KeywordVersion, ListPreview, RuleOutcome } from '../types';
+import type { KeywordListSummary, KeywordVersion, ListPreview, RuleOutcome, RuleRun } from '../types';
 
 type Props = {
   investigationId: string;
@@ -81,6 +81,32 @@ export function KeywordsTab({ investigationId, canWrite, action }: Props) {
   useEffect(() => {
     reload().catch((failure: Error) => setError(failure.message));
   }, [reload, setError]);
+
+  const [runs, setRuns] = useState<RuleRun[]>([]);
+  const reloadRuns = useCallback(
+    () => api<RuleRun[]>(`/investigations/${investigationId}/rule-runs`).then(setRuns),
+    [investigationId],
+  );
+  const pending = runs.some(
+    (evaluation) => evaluation.status === 'queued' || evaluation.status === 'running',
+  );
+  useEffect(() => {
+    reloadRuns().catch((failure: Error) => setError(failure.message));
+    if (!pending) return;
+    // A queued or running evaluation is followed until it ends.
+    const timer = setInterval(() => void reloadRuns().catch(() => undefined), 3000);
+    return () => clearInterval(timer);
+  }, [reloadRuns, pending, setError]);
+  const evaluate = (list: KeywordListSummary) =>
+    run(async () => {
+      await api(`/keyword-lists/${list.id}/versions/${list.version}/runs`, 'POST', {});
+      await reloadRuns();
+    });
+  const cancel = (evaluation: RuleRun) =>
+    run(async () => {
+      await api(`/rule-runs/${evaluation.id}/cancel`, 'POST', {});
+      await reloadRuns();
+    });
 
   const latest = (list: KeywordListSummary) =>
     api<KeywordVersion>(`/keyword-lists/${list.id}/versions/${list.version}`);
@@ -179,11 +205,62 @@ export function KeywordsTab({ investigationId, canWrite, action }: Props) {
                   <button className="text-button" disabled={busy} onClick={() => void exportList(list)}>
                     <Download size={13} /> Exporter
                   </button>
+                  {canWrite && (
+                    <button className="text-button" disabled={busy} onClick={() => void evaluate(list)}>
+                      <ListChecks size={13} /> Évaluer sur le dossier
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {runs.length > 0 && (
+        <>
+          <h3>Évaluations</h3>
+          <p>
+            Chaque évaluation lit les observations du dossier enregistrées à son démarrage ; ses
+            correspondances alimentent l’onglet « Triage ».
+          </p>
+          <table aria-label="Évaluations">
+            <thead>
+              <tr>
+                <th>Liste</th>
+                <th>État</th>
+                <th>Entités</th>
+                <th>Correspondances</th>
+                <th>Non évalués</th>
+                <th>Demandée</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((evaluation) => (
+                <tr key={evaluation.id}>
+                  <td>
+                    {evaluation.list_name} v{evaluation.list_version}
+                  </td>
+                  <td>
+                    <span className={'badge ' + evaluation.status}>{evaluation.status}</span>
+                    {evaluation.error && <small> {evaluation.error}</small>}
+                  </td>
+                  <td>{evaluation.counts.entities ?? 0}</td>
+                  <td>{evaluation.counts.match ?? 0}</td>
+                  <td>{evaluation.counts.not_evaluated ?? 0}</td>
+                  <td>{formatDate(evaluation.requested_at)}</td>
+                  <td>
+                    {canWrite && (evaluation.status === 'queued' || evaluation.status === 'running') && (
+                      <button className="text-button" disabled={busy} onClick={() => void cancel(evaluation)}>
+                        Annuler
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
       {editing && (
         <div className="keyword-editor">

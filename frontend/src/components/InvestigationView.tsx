@@ -8,12 +8,14 @@ import { ALL_SCANS } from '../types';
 import { AccessTab } from './AccessTab';
 import { ExplorationTab } from './ExplorationTab';
 import { KeywordsTab } from './KeywordsTab';
+import { TriageTab } from './TriageTab';
 import { NotesTab } from './NotesTab';
 import { TimelineTab } from './TimelineTab';
 
 const TABS = [
   ['graph', 'Exploration'],
   ['keywords', 'Termes'],
+  ['triage', 'Triage'],
   ['timeline', 'Scans & chronologie'],
   ['notes', 'Notes d’analyse'],
   ['access', 'Accès'],
@@ -99,6 +101,9 @@ export function InvestigationView({
       )}
       {tab === 'keywords' && (
         <KeywordsTab investigationId={investigation.id} canWrite={canWrite} action={action} />
+      )}
+      {tab === 'triage' && (
+        <TriageTab investigationId={investigation.id} canWrite={canWrite} action={action} />
       )}
       {tab === 'timeline' && (
         <TimelineTab
