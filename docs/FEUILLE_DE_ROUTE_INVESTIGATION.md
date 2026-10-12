@@ -10,6 +10,8 @@ Principaux changements de la révision 0.2 :
 - Les points de reprise de collecte deviennent bloquants quand les profils dépassent quelques minutes, plus tôt n'apporte rien (§6).
 - Les charges de R5 et R8 sont relevées, et l'enveloppe recalculée (§14) ; le backlog gagne REM-27 à REM-31 (§15).
 
+**Complément du 12 octobre 2026 (0.3.0)** : le [plan de collecte configurable, recherche de code et conservation longue](PLAN_COLLECTE_RECHERCHE_STOCKAGE.md) priorise la découverte par le code et fixe l'ordre des prochains jalons ; il fait foi pour ces chantiers.
+
 Ce document transforme les besoins du projet en travaux d'implémentation. Il distingue les fonctions présentes, les améliorations nécessaires au pilote d'équipe et les extensions intéressantes. Il complète le [cadrage initial](PROJET_INVESTIGATION_GITHUB.md), l'[état livré](IMPLEMENTATION.md) et le [guide du graphe](ATELIER_GRAPHE.md). Pour décider des prochains lots, utiliser cette feuille de route plutôt que les estimations initiales faites avant développement.
 
 **Recommandation : construire d'abord la chaîne « mots-clés → résultats expliqués → triage → investigation → suivi ».** Elle apportera davantage à l'analyste qu'un nouveau changement de moteur graphique. La reprise des collectes, les droits et les migrations doivent progresser avec cette chaîne.
