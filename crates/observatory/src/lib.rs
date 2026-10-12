@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod demo;
 pub mod error;
+pub mod evaluation;
 pub mod legacy;
 pub mod metrics;
 pub mod migrate;

@@ -841,6 +841,66 @@ td {
   font-size: 10px;
   margin-top: 32px;
 }
+.triage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+.chip {
+  background: #f4f7f1;
+  color: #536d5b;
+  border: 1px solid #dfe6dc;
+  font-size: 11px;
+  padding: 6px 10px;
+  gap: 6px;
+}
+.chip.selected {
+  background: #2a745b;
+  border-color: #2a745b;
+  color: #fff;
+}
+.triage-item {
+  border-top: 1px solid #e4e9df;
+  padding: 16px 0;
+}
+.triage-item header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.triage-item h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.triage-item small {
+  color: #7e907e;
+}
+.triage-item li,
+.triage-rule {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.triage-rule {
+  color: #6c7f70;
+}
+.triage-item .row-actions {
+  max-width: none;
+  align-items: center;
+}
+.triage-item input {
+  flex: 1 1 220px;
+}
+.badge.retained {
+  background: #e3f1e6;
+  color: #2a745b;
+}
+.badge.dismissed,
+.badge.cancelled {
+  background: #eef0ee;
+  color: #6c7a70;
+}
 .discovery {
   margin-top: 14px;
   border-top: 1px solid #e3e9e1;

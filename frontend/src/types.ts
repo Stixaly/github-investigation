@@ -143,6 +143,52 @@ export type DiscoveryPreview = {
   };
 };
 
+export type RuleRun = {
+  id: string;
+  list_id: string;
+  list_name: string;
+  list_version: number;
+  engine_version: number;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  counts: Partial<Record<'entities' | RuleOutcome, number>>;
+  error?: string | null;
+  requested_at: string;
+  finished_at?: string | null;
+};
+
+export type TriageState = 'new' | 'in_review' | 'retained' | 'dismissed';
+
+export type TriageItem = {
+  id: string;
+  state: TriageState;
+  note: string;
+  entity_id: string;
+  entity_kind: string;
+  entity_label: string;
+  list_id: string;
+  list_name: string;
+  list_version: number;
+  engine_version: number;
+  rule_id: string;
+  review_priority: string;
+  hits: RuleHit[];
+  exclusions: RuleHit[];
+  not_evaluated: string[];
+  evidence_hash: string;
+  observed_at: string | null;
+  evaluated_at: string | null;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type TriagePage = {
+  items: TriageItem[];
+  counts: Record<string, number>;
+  page: number;
+  page_size: number;
+  notice: string;
+};
+
 /** View of the exploration tab that gathers every scan of the investigation. */
 export const ALL_SCANS = 'all';
 

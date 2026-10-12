@@ -163,6 +163,10 @@ try {
   await page.getByRole('button', { name: 'Comparer au précédent' }).first().click();
   await page.locator('.comparison').waitFor();
   await page.screenshot({ path: output + '/chronologie-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: 'Termes', exact: true }).click();
+  await page.getByText('Aucune liste publiée dans ce dossier.').waitFor();
+  await page.getByRole('button', { name: 'Triage', exact: true }).click();
+  await page.getByRole('heading', { name: 'Triage', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Exploration', exact: true }).click();
   await page.locator('.graph[data-ready="true"]').waitFor();
   // Whole-investigation view, common neighbours and cross-investigation search.
@@ -206,7 +210,7 @@ try {
   await page.getByRole('button', { name: 'Ouvrir mon espace' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, whole-investigation view, common neighbours, search, discovery plan, mobile, WebGL fallback, logout.',
+    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, keyword lists and triage tabs, whole-investigation view, common neighbours, search, discovery plan, mobile, WebGL fallback, logout.',
   );
 } catch (error) {
   console.log(

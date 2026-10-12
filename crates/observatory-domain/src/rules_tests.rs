@@ -185,3 +185,39 @@ fn disabled_rules_are_skipped() {
     let results = definition.evaluate(&input(&json!({"repository.name": "xy"})));
     assert_eq!(results.iter().map(|result| result.rule.as_str()).collect::<Vec<_>>(), ["on"]);
 }
+
+#[test]
+fn observations_become_engine_inputs() {
+    let (kind, repository) = observation_input(
+        "Repository",
+        &json!({"full_name": "alice/c2-kit", "description": null, "topics": ["red-team", 3], "stargazers_count": 4}),
+    )
+    .unwrap();
+    assert_eq!(kind, "repository");
+    assert_eq!(
+        Value::Object(repository),
+        json!({"repository.full_name": "alice/c2-kit", "repository.name": "c2-kit",
+               "repository.description": null, "repository.topics": ["red-team"]})
+    );
+    let (_, legacy) = observation_input("Repository", &json!({"name": "old"})).unwrap();
+    assert_eq!(Value::Object(legacy), json!({"repository.name": "old"}), "missing fields stay unknown");
+    let (kind, account) = observation_input("Account", &json!({"login": "alice", "type": "User"})).unwrap();
+    assert_eq!((kind, Value::Object(account)), ("account", json!({"account.login": "alice"})));
+    assert!(observation_input("Issue", &json!({"title": "x"})).is_none());
+    assert!(observation_input("Repository", &json!("x")).is_none());
+}
+
+#[test]
+fn rules_apply_to_the_kinds_they_name() {
+    let definition = Definition::parse(&list(&json!([
+        {"id": "repo", "name": "Dépôts", "any": [{"fields": ["repository.name"], "match": "whole_word", "terms": ["c2"]}]},
+        {"id": "both", "name": "Les deux", "any": [{"fields": ["repository.description", "account.login"], "match": "substring", "terms": ["c2"]}]}
+    ])))
+    .unwrap();
+    assert!(definition.rules[0].applies_to("repository") && !definition.rules[0].applies_to("account"));
+    let results = definition.evaluate_kind("account", &input(&json!({"account.login": "c2master"})));
+    assert_eq!(
+        results.iter().map(|result| (result.rule.as_str(), result.outcome)).collect::<Vec<_>>(),
+        [("both", Outcome::Match)]
+    );
+}

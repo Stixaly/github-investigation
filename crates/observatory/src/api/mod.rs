@@ -7,6 +7,7 @@ mod graph;
 mod investigations;
 mod keywords;
 pub(crate) mod scans;
+mod triage;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::json;
 use sqlx::PgPool;
@@ -60,6 +61,11 @@ pub fn router(state: AppState) -> Router {
         .route("/keyword-lists/preview", post(keywords::preview))
         .route("/keyword-lists/{list_id}/versions", post(keywords::publish_version))
         .route("/keyword-lists/{list_id}/versions/{version}", get(keywords::version))
+        .route("/keyword-lists/{list_id}/versions/{version}/runs", post(triage::create))
+        .route("/investigations/{investigation_id}/rule-runs", get(triage::list))
+        .route("/rule-runs/{run_id}/cancel", post(triage::cancel))
+        .route("/investigations/{investigation_id}/triage", get(triage::queue))
+        .route("/triage/{item_id}", put(triage::decide))
         .route("/investigations/{investigation_id}/graph", get(graph::investigation_graph))
         .route("/investigations/{investigation_id}/common", get(graph::common))
         .route("/search", get(graph::search))
