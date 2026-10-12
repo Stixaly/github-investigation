@@ -5,6 +5,7 @@
 //! fonctions sont testées unitairement et soumises au fuzzing (`fuzz/`).
 
 pub mod canonical;
+pub mod discovery;
 pub mod pagination;
 pub mod profile;
 pub mod rules;

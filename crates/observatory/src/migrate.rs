@@ -38,6 +38,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "profils_et_termes",
         sql: include_str!("../../../migrations/0005_profils_et_termes.sql"),
     },
+    Migration {
+        version: 6,
+        name: "decouverte",
+        sql: include_str!("../../../migrations/0006_decouverte.sql"),
+    },
 ];
 
 pub fn latest() -> i32 {

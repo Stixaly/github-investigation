@@ -99,7 +99,7 @@ pub async fn report(pool: &PgPool) -> sqlx::Result<Value> {
         "SELECT count(*) AS finished, \
          percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at - started_at))::float8 AS p50, \
          percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at - started_at))::float8 AS p95 \
-         FROM scans WHERE source = 'github' AND started_at IS NOT NULL AND finished_at IS NOT NULL",
+         FROM scans WHERE source IN ('github', 'search') AND started_at IS NOT NULL AND finished_at IS NOT NULL",
     )
     .fetch_one(pool)
     .await?;
@@ -110,7 +110,7 @@ pub async fn report(pool: &PgPool) -> sqlx::Result<Value> {
          sum((coverage->'stats'->>'retries')::int8)::int8 AS retries, \
          sum((coverage->'stats'->>'bytes')::int8)::int8 AS bytes, \
          sum(requests_used)::int8 AS requests_charged \
-         FROM scans WHERE source = 'github'",
+         FROM scans WHERE source IN ('github', 'search')",
     )
     .fetch_one(pool)
     .await?;

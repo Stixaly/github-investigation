@@ -841,6 +841,50 @@ td {
   font-size: 10px;
   margin-top: 32px;
 }
+.discovery {
+  margin-top: 14px;
+  border-top: 1px solid #e3e9e1;
+  padding-top: 12px;
+}
+.discovery summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2a745b;
+}
+.discovery-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+.discovery-form label {
+  font-size: 11px;
+  color: #6c7f70;
+}
+.discovery-query {
+  flex: 1 1 260px;
+}
+.discovery-form .checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.discovery-plan {
+  margin-top: 14px;
+  font-size: 12px;
+}
+.discovery-plan code {
+  overflow-wrap: anywhere;
+}
+.discovery-plan small {
+  color: #7e907e;
+  margin-left: 6px;
+}
 .keywords table {
   margin: 18px 0;
 }

@@ -6,6 +6,7 @@ import Graph from '../graph/Graph';
 import type { Action } from '../hooks/useAction';
 import type { CommonNeighbours, Edge, GraphData, Node, Overlap, Profile, Scan } from '../types';
 import { ALL_SCANS } from '../types';
+import { DiscoveryPanel } from './DiscoveryPanel';
 import { EntityTable } from './EntityTable';
 import { Inspector } from './Inspector';
 
@@ -173,6 +174,12 @@ export function ExplorationTab({
           </button>
         </form>
         <p>Collecte publique bornée · Aucun code exécuté · Les données existantes restent consultables</p>
+        <DiscoveryPanel
+          investigationId={investigationId}
+          canWrite={canWrite}
+          action={action}
+          onScanCreated={onScanCreated}
+        />
       </section>
       <section className="explorer">
         <div className="explorer-toolbar">
