@@ -132,9 +132,9 @@ Les exclusions sont locales à une règle ou à une politique explicitement nomm
 
 ### 4.5 Exemple de liste
 
-Le fichier [keyword-list.example.json](examples/keyword-list.example.json) propose une configuration de départ **illustrative, non encore importable dans l'application**. Il contient des termes tels que `malware`, `ransomware`, `stealer` et l'expression `command and control`, ainsi qu'un indicateur de contexte de recherche. Ils servent à retrouver des sujets pertinents, pas à désigner des comptes malveillants.
+Le fichier [keyword-list.example.json](examples/keyword-list.example.json) propose une configuration de départ **illustrative, importable depuis la 0.4** (onglet « Termes » ; ses tests sont exécutés à la publication). Il contient des termes tels que `malware`, `ransomware`, `stealer` et l'expression `command and control`, ainsi qu'un indicateur de contexte de recherche. Ils servent à retrouver des sujets pertinents, pas à désigner des comptes malveillants.
 
-Dans ce format proposé, `repository.name` désigne le nom sans le propriétaire ; `repository.topics` est un tableau dont chaque valeur est évaluée séparément. Dans une clause, au moins un terme dans au moins un champ suffit. Une règle combine ses clauses ainsi : un `any` vrai s'il est renseigné, tous les `all` vrais et aucun `none` vrai. Les tableaux de clauses vides n'ajoutent pas de contrainte ; une règle sans clause positive est refusée. Les champs absents rendent la clause indéterminée si aucun champ connu ne la satisfait. Le moteur doit figer cette sémantique et le schéma JSON avant de proposer un import réel.
+Dans ce format proposé, `repository.name` désigne le nom sans le propriétaire ; `repository.topics` est un tableau dont chaque valeur est évaluée séparément. Dans une clause, au moins un terme dans au moins un champ suffit. Une règle combine ses clauses ainsi : un `any` vrai s'il est renseigné, tous les `all` vrais et aucun `none` vrai. Les tableaux de clauses vides n'ajoutent pas de contrainte ; une règle sans clause positive est refusée. Les champs absents rendent la clause indéterminée si aucun champ connu ne la satisfait. Le moteur 0.4 (`observatory-domain/src/rules.rs`, version 1) fige cette sémantique et ce schéma ; `version` et `status` sont attribués par la publication.
 
 Exemple de présentation d'un résultat :
 

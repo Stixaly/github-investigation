@@ -27,6 +27,8 @@ export type Scan = {
   error?: string | null;
   requests_used: number;
   max_requests: number;
+  profile_name?: string | null;
+  profile_version?: number | null;
 };
 
 export type Note = { id: string; body: string; login: string; created_at: string };
@@ -72,6 +74,59 @@ export type Found = { id: string; kind: string; label: string; investigations: O
 export type CommonNeighbour = { id: string; kind: string; label: string; with_a: string[]; with_b: string[] };
 
 export type CommonNeighbours = { a: string; b: string; common: CommonNeighbour[]; notice: string };
+
+/** Latest version of a collection profile. */
+export type Profile = {
+  name: string;
+  version: number;
+  label: string;
+  description: string;
+  settings: { relations: string[]; max_pages: number; default_requests: number; max_requests: number };
+};
+
+export type KeywordListSummary = {
+  id: string;
+  name: string;
+  version: number;
+  rules: number;
+  published_at: string;
+  published_by: string;
+};
+
+export type KeywordVersion = {
+  list_id: string;
+  version: number;
+  engine_version: number;
+  published_at: string;
+  published_by: string;
+  definition: Record<string, unknown>;
+};
+
+export type RuleOutcome = 'match' | 'no_match' | 'not_evaluated';
+
+export type RuleHit = {
+  field: string;
+  index?: number;
+  term: string;
+  start: number;
+  end: number;
+  excerpt: string;
+};
+
+export type RuleResult = {
+  rule: string;
+  outcome: RuleOutcome;
+  review_priority: string;
+  hits: RuleHit[];
+  exclusions: RuleHit[];
+  not_evaluated: string[];
+};
+
+export type ListPreview = {
+  engine_version: number;
+  failing_tests: { rule: string; test: number; expected: RuleOutcome; actual: RuleOutcome }[];
+  results: RuleResult[];
+};
 
 /** View of the exploration tab that gathers every scan of the investigation. */
 export const ALL_SCANS = 'all';

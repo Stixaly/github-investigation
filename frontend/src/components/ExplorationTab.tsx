@@ -1,13 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, GitFork, Search } from 'lucide-react';
 import { api } from '../api';
 import { formatDate, statusLabel } from '../format';
 import Graph from '../graph/Graph';
 import type { Action } from '../hooks/useAction';
-import type { CommonNeighbours, Edge, GraphData, Node, Overlap, Scan } from '../types';
+import type { CommonNeighbours, Edge, GraphData, Node, Overlap, Profile, Scan } from '../types';
 import { ALL_SCANS } from '../types';
 import { EntityTable } from './EntityTable';
 import { Inspector } from './Inspector';
+
+/** Used until the profiles are loaded, or if they cannot be: the 0.3 collection. */
+const NETWORK: Profile = {
+  name: 'reseau',
+  version: 1,
+  label: 'Réseau',
+  description: '',
+  settings: { relations: [], max_pages: 2, default_requests: 12, max_requests: 50 },
+};
+const BUDGETS = [6, 12, 24, 50];
+
+/** Seeds typed in one field, separated by spaces, commas or semicolons. */
+export function splitSeeds(text: string): string[] {
+  return text.split(/[\s,;]+/).filter(Boolean);
+}
 
 type Props = {
   investigationId: string;
@@ -20,7 +35,7 @@ type Props = {
   graphPath: string;
   graph: GraphData | null;
   action: Action;
-  onScanCreated: (scan: Scan) => void;
+  onScanCreated: (scans: Scan[]) => void;
   onSelectScan: (id: string) => void;
   onGraph: (graph: GraphData) => void;
   onOpenInvestigation: (id: string) => void;
@@ -45,7 +60,21 @@ export function ExplorationTab({
   const [overlaps, setOverlaps] = useState<Overlap[]>([]);
   const [pinned, setPinned] = useState<Node | null>(null);
   const [common, setCommon] = useState<CommonNeighbours | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([NETWORK]);
+  const [profileName, setProfileName] = useState(NETWORK.name);
+  const [budget, setBudget] = useState(NETWORK.settings.default_requests);
   const { busy, run, setError } = action;
+  const profile = profiles.find((candidate) => candidate.name === profileName) ?? NETWORK;
+
+  useEffect(() => {
+    let live = true;
+    api<Profile[]>('/profiles')
+      .then((rows) => live && rows.length > 0 && setProfiles(rows))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const select = (item: Node | Edge) => {
     setSelected(item);
@@ -61,13 +90,21 @@ export function ExplorationTab({
     run(async () => {
       if (graphPath) onGraph(await api<GraphData>(graphPath + query));
     });
-  const launch = (seed: string, budget: number) =>
+  const launch = (seeds: string[]) =>
     run(async () => {
-      const created = await api<Scan>(`/investigations/${investigationId}/scans`, 'POST', {
-        seed,
-        max_requests: budget,
-        idempotency_key: crypto.randomUUID(),
-      });
+      const options = { profile: profile.name, max_requests: budget, idempotency_key: crypto.randomUUID() };
+      const created =
+        seeds.length === 1
+          ? [
+              await api<Scan>(`/investigations/${investigationId}/scans`, 'POST', {
+                seed: seeds[0],
+                ...options,
+              }),
+            ]
+          : await api<Scan[]>(`/investigations/${investigationId}/scans/batch`, 'POST', {
+              seeds,
+              ...options,
+            });
       onScanCreated(created);
     });
   const selectEntity = (id: string) => {
@@ -83,7 +120,7 @@ export function ExplorationTab({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            void launch(String(form.get('seed')), Number(form.get('budget')));
+            void launch(splitSeeds(String(form.get('seed'))));
           }}
         >
           <label className="seed">
@@ -92,16 +129,42 @@ export function ExplorationTab({
               name="seed"
               required
               aria-label="Compte ou dépôt GitHub"
-              placeholder="github.com/compte/depot ou compte"
+              placeholder="github.com/compte/depot ou compte — plusieurs, séparés par des espaces"
               disabled={!canWrite}
             />
           </label>
+          <label className="budget" title={profile.description}>
+            Profil
+            <select
+              aria-label="Profil de collecte"
+              value={profile.name}
+              disabled={!canWrite}
+              onChange={(event) => {
+                const chosen = profiles.find((candidate) => candidate.name === event.target.value) ?? NETWORK;
+                setProfileName(chosen.name);
+                setBudget(chosen.settings.default_requests);
+              }}
+            >
+              {profiles.map((candidate) => (
+                <option key={candidate.name} value={candidate.name}>
+                  {candidate.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="budget">
             Budget
-            <select name="budget" defaultValue="12" disabled={!canWrite}>
-              <option value="6">6 requêtes</option>
-              <option value="12">12 requêtes</option>
-              <option value="24">24 requêtes</option>
+            <select
+              aria-label="Budget par scan"
+              value={budget}
+              disabled={!canWrite}
+              onChange={(event) => setBudget(Number(event.target.value))}
+            >
+              {BUDGETS.filter((value) => value <= profile.settings.max_requests).map((value) => (
+                <option key={value} value={value}>
+                  {value} requêtes
+                </option>
+              ))}
             </select>
           </label>
           <button disabled={busy || !canWrite}>
@@ -184,7 +247,7 @@ export function ExplorationTab({
             }
             onNeighborhood={(node) => void reloadGraph(`?focus=${node.id}`)}
             onOpenInvestigation={onOpenInvestigation}
-            onCollect={canWrite ? (node) => void launch(node.label, 12) : undefined}
+            onCollect={canWrite ? (node) => void launch([node.label]) : undefined}
             pinned={pinned}
             onPin={setPinned}
             onCommon={(node) =>

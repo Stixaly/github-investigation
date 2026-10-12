@@ -30,6 +30,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 # Integration tests run against the test-postgres service (compose profile `test`).
 FROM rust-base AS test
+# Keyword-list tests read the roadmap example list.
+COPY docs/examples/ docs/examples/
 RUN cargo test --locked --no-run
 CMD ["cargo", "test", "--locked", "--offline"]
 

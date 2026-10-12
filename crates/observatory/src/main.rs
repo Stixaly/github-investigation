@@ -14,7 +14,7 @@ use observatory::collector::{GitHub, Settings, budget};
 use observatory::config::{ApiConfig, secret, var_or};
 use observatory::db::{DbSettings, pool, tune};
 use observatory::legacy::{ImportRequest, import_snapshot};
-use observatory::{demo, migrate, users, worker};
+use observatory::{demo, metrics, migrate, users, worker};
 use sqlx::Connection;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -39,6 +39,9 @@ enum Command {
     /// Affiche les quotas GitHub de l'accès du worker, le rythme partagé et le cache
     /// (rôle applicatif PostgreSQL ; `GET /rate_limit` n'est pas décompté).
     GithubStatus,
+    /// Mesures de référence en JSON : volumes, croissance, durées des scans, réutilisation
+    /// du cache (rôle applicatif PostgreSQL ; aucune requête GitHub).
+    Metrics,
     /// Applique les migrations et les droits du rôle applicatif (rôle administrateur PostgreSQL).
     Migrate {
         /// Vérifie seulement que le schéma est à jour.
@@ -137,6 +140,12 @@ async fn run(command: Command) -> anyhow::Result<()> {
             migrate::verify(&pool).await?;
             let github = GitHub::new(&secret("GITHUB_TOKEN")?)?;
             println!("{}", budget::status(&pool, &github).await?);
+            Ok(())
+        }
+        Command::Metrics => {
+            let pool = pool(settings.options(), 1).await.context("connexion PostgreSQL")?;
+            migrate::verify(&pool).await?;
+            println!("{}", serde_json::to_string_pretty(&metrics::report(&pool).await?)?);
             Ok(())
         }
         Command::Migrate { check } => {

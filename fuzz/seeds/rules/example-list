@@ -1,0 +1,87 @@
+{
+  "format": "observatory.keyword-list",
+  "schema_version": 1,
+  "name": "Thèmes malware — aide au triage",
+  "description": "Exemple de recherche thématique. Une correspondance indique un sujet à examiner, jamais une qualification automatique du dépôt ou de son auteur.",
+  "scope": "investigation",
+  "version": 1,
+  "status": "draft",
+  "normalization": {
+    "unicode": "NFKC",
+    "case_sensitive": false,
+    "strip_accents": false,
+    "repository_name_separators": ["-", "_", ".", "/"],
+    "missing_field_result": "not_evaluated"
+  },
+  "rules": [
+    {
+      "id": "malware-topics",
+      "name": "Thèmes malware",
+      "enabled": true,
+      "category": "theme",
+      "review_priority": "normal",
+      "any": [
+        {
+          "fields": ["repository.name", "repository.description", "repository.topics"],
+          "match": "whole_word",
+          "terms": ["malware", "ransomware", "stealer"]
+        }
+      ],
+      "all": [],
+      "none": [],
+      "tests": [
+        {"input": {"repository.name": "analyse-malware"}, "expected": "match"},
+        {"input": {"repository.name": "outils", "repository.description": "RANSOMWARE research"}, "expected": "match"},
+        {"input": {"repository.name": "outils", "repository.description": "", "repository.topics": []}, "expected": "no_match"},
+        {"input": {"repository.name": "outils"}, "expected": "not_evaluated"}
+      ]
+    },
+    {
+      "id": "command-control",
+      "name": "Expression de recherche C2",
+      "enabled": true,
+      "category": "theme",
+      "review_priority": "normal",
+      "any": [
+        {
+          "fields": ["repository.description", "repository.readme"],
+          "match": "exact_phrase",
+          "terms": ["command and control", "commande et contrôle"]
+        }
+      ],
+      "all": [],
+      "none": [],
+      "tests": [
+        {"input": {"repository.description": "A command and control research dataset"}, "expected": "match"},
+        {"input": {"repository.description": "command and", "repository.readme": "control"}, "expected": "no_match"},
+        {"input": {"repository.description": "outil"}, "expected": "not_evaluated"}
+      ]
+    },
+    {
+      "id": "research-context",
+      "name": "Contexte de recherche à conserver",
+      "enabled": true,
+      "category": "context",
+      "review_priority": "informational",
+      "any": [
+        {
+          "fields": ["repository.description", "repository.readme"],
+          "match": "exact_phrase",
+          "terms": ["malware analysis", "security research", "analyse de malware"]
+        }
+      ],
+      "all": [],
+      "none": [],
+      "tests": [
+        {"input": {"repository.description": "Tools for malware analysis"}, "expected": "match"}
+      ]
+    }
+  ],
+  "execution": {
+    "default_mode": "local_corpus",
+    "external_discovery_enabled": false,
+    "automatic_deep_scan_enabled": false,
+    "automatic_malicious_classification_enabled": false,
+    "automatic_external_notification_enabled": false
+  }
+}

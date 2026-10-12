@@ -1,7 +1,6 @@
 {
-  "format": "observatory.keyword-list.proposal",
+  "format": "observatory.keyword-list",
   "schema_version": 1,
-  "implementation_status": "design_example_not_supported_yet",
   "name": "Thèmes malware — aide au triage",
   "description": "Exemple de recherche thématique. Une correspondance indique un sujet à examiner, jamais une qualification automatique du dépôt ou de son auteur.",
   "scope": "investigation",

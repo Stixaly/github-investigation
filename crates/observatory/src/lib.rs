@@ -11,6 +11,7 @@ pub mod db;
 pub mod demo;
 pub mod error;
 pub mod legacy;
+pub mod metrics;
 pub mod migrate;
 pub mod model;
 pub mod security;

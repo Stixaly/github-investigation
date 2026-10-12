@@ -94,6 +94,12 @@ Vérifier l'accès et les quotas sans consommer de requête :
 docker compose exec worker observatory github-status
 ```
 
+Relevé de référence du corpus (volumes, croissance, durées, réutilisation du cache), sans requête GitHub, à conserver pour comparer deux périodes :
+
+```sh
+docker compose exec api observatory metrics > metrics-$(date +%F).json
+```
+
 ### Économie de quota
 
 Le collecteur ([ADR 0005](adr/0005-collecte-econome.md)) :
