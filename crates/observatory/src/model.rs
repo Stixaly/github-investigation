@@ -39,6 +39,8 @@ pub struct Scan {
     pub profile_version: Option<i32>,
     /// Copie des réglages du profil au lancement.
     pub profile: Option<Value>,
+    /// Plan de requêtes d'une découverte (source `search`).
+    pub plan: Option<Value>,
 }
 
 /// États d'un scan encore susceptibles de consommer l'API GitHub.

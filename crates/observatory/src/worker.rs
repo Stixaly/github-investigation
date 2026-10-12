@@ -30,7 +30,7 @@ pub async fn claim(pool: &PgPool) -> sqlx::Result<Option<Scan>> {
     .execute(&mut *tx)
     .await?;
     let id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM scans WHERE source = 'github' AND available_at <= now() \
+        "SELECT id FROM scans WHERE source IN ('github', 'search') AND available_at <= now() \
          AND (status IN ('queued', 'waiting_quota') OR (status = 'running' AND lease_until < now())) \
          ORDER BY requested_at FOR UPDATE SKIP LOCKED LIMIT 1",
     )

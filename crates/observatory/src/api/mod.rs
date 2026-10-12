@@ -1,11 +1,12 @@
 //! API HTTP et service de l'interface compilée.
 
 mod auth;
+mod discovery;
 mod extract;
 mod graph;
 mod investigations;
 mod keywords;
-mod scans;
+pub(crate) mod scans;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -53,6 +54,8 @@ pub fn router(state: AppState) -> Router {
         .route("/investigations/{investigation_id}/scans", get(scans::list).post(scans::create))
         .route("/investigations/{investigation_id}/scans/batch", post(scans::create_batch))
         .route("/profiles", get(scans::profiles))
+        .route("/investigations/{investigation_id}/discoveries", post(discovery::create))
+        .route("/investigations/{investigation_id}/discoveries/preview", post(discovery::preview))
         .route("/investigations/{investigation_id}/keyword-lists", get(keywords::list).post(keywords::create))
         .route("/keyword-lists/preview", post(keywords::preview))
         .route("/keyword-lists/{list_id}/versions", post(keywords::publish_version))

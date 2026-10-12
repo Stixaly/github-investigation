@@ -10,6 +10,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 - Lancement de 1 à 10 seeds à la fois (`POST /api/v1/investigations/{id}/scans/batch`), idempotent et tout ou rien.
 - Listes de termes versionnées par dossier (onglet « Termes ») : format `observatory.keyword-list` de la feuille de route, publication soumise aux tests intégrés, versions immuables, export réimportable, essai sur un exemple.
 - Moteur de règles à trois états (`match`, `no_match`, `not_evaluated`), avec normalisation Unicode et explications positionnées ; cible de fuzzing `rules`.
+- Découverte GitHub par recherche de dépôts ou de code (migration 0006, [ADR 0007](docs/adr/0007-decouverte-github.md)) : plan de requêtes compilé et affiché avant tout appel, depuis une requête saisie ou une liste publiée ; forks inclus explicitement ; recherches saturées subdivisées ; dépôts trouvés gardés avec toutes leurs origines ; aucun extrait de code conservé avant REM-30.
 - Commande `observatory metrics` : volumes, croissance, durées et réutilisation, en JSON ; octets reçus comptés dans `coverage.stats`.
 
 ### Modifié

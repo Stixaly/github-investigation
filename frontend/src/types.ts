@@ -128,6 +128,21 @@ export type ListPreview = {
   results: RuleResult[];
 };
 
+export type DiscoveryPreview = {
+  label: string;
+  max_requests_upper_bound: number;
+  resource: string;
+  plan: {
+    kind: 'repositories' | 'code';
+    queries: { q: string; base: string; origin: string }[];
+    max_pages: number;
+    max_subdivisions: number;
+    include_forks: boolean;
+    local_checks: string[];
+    warnings: string[];
+  };
+};
+
 /** View of the exploration tab that gathers every scan of the investigation. */
 export const ALL_SCANS = 'all';
 

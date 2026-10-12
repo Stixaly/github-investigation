@@ -8,6 +8,7 @@
 
 pub mod budget;
 pub mod cache;
+mod discovery;
 pub mod graphql;
 pub mod http;
 
@@ -259,6 +260,11 @@ impl<'a> Collector<'a> {
 
     /// GET d'une URL : cache frais, sinon requête conditionnelle, avec nouvelles tentatives bornées.
     async fn get(&self, url: &str) -> Result<Page, CollectError> {
+        self.get_on(url, CORE).await
+    }
+
+    /// GET réservé sur une ressource de quota (`core`, `search`, `code_search`).
+    async fn get_on(&self, url: &str, resource: &str) -> Result<Page, CollectError> {
         let identity = self.github.identity();
         let cached = cache::lookup(self.pool, url, identity, self.settings.freshness).await?;
         if let Some(hit) = cached.as_ref().filter(|hit| hit.fresh) {
@@ -270,7 +276,7 @@ impl<'a> Collector<'a> {
             });
         }
         let etag = cached.as_ref().and_then(|hit| hit.etag.as_deref());
-        let fetched = self.send(CORE, || self.github.fetch(url, etag)).await?;
+        let fetched = self.send(resource, || self.github.fetch(url, etag)).await?;
         match fetched.result {
             Ok(Response::Fresh { payload, link, etag }) => {
                 cache::store(self.pool, url, identity, etag.as_deref(), &payload, &link).await?;
@@ -516,6 +522,9 @@ impl<'a> Collector<'a> {
     /// Un scan repris saute les étapes terminées et reprend la suivante à sa
     /// dernière page enregistrée.
     pub async fn collect(&self) -> Result<&'static str, CollectError> {
+        if self.scan.source == "search" {
+            return self.discover().await;
+        }
         let seed = parse_seed(&self.scan.seed).map_err(|error| CollectError::Fetch(error.to_string()))?;
         let base = self.github.base();
         let mut coverage = self.scan.coverage.as_object().cloned().unwrap_or_default();

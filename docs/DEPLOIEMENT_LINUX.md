@@ -88,6 +88,8 @@ Seul le worker reçoit ce token. Les requêtes utilisent une origine GitHub fixe
 
 Un token *fine-grained* limité aux dépôts publics en lecture (« Public repositories (read-only) »), sans autre permission, suffit : le produit ne lit que des données publiques. Lui donner une date d'expiration et prévoir son renouvellement. Il porte le quota REST de 60 requêtes par heure (accès anonyme) à 5 000. Une GitHub App obtient davantage sur une grande organisation, mais ses jetons d'installation expirent après une heure et le worker ne sait pas encore les renouveler. Ne pas multiplier les tokens ou les comptes pour contourner les quotas.
 
+La recherche de code de la découverte exige ce token ; sans lui, une découverte de code échoue avec une raison explicite, sans appel à GitHub.
+
 Vérifier l'accès et les quotas sans consommer de requête :
 
 ```sh

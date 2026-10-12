@@ -180,6 +180,12 @@ try {
   await page.getByLabel('Rechercher dans tous les dossiers').fill('alice');
   await page.locator('.search-result', { hasText: 'demo-alice' }).first().waitFor();
   await page.getByLabel('Rechercher dans tous les dossiers').fill('');
+  // A discovery plan is shown without calling GitHub; nothing is launched here.
+  await page.getByText('Découvrir sur GitHub').click();
+  await page.getByLabel('Requête GitHub').fill('loader');
+  await page.getByRole('button', { name: 'Voir le plan' }).click();
+  await page.getByLabel('Plan de la découverte').getByText('loader fork:true').waitFor();
+  await page.getByText('Découvrir sur GitHub').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.graph[data-engine="3d"][data-simulation="idle"]').waitFor({ timeout: 60000 });
   await page.screenshot({ path: output + '/exploration-mobile.png', fullPage: true });
@@ -200,7 +206,7 @@ try {
   await page.getByRole('button', { name: 'Ouvrir mon espace' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, whole-investigation view, common neighbours, search, mobile, WebGL fallback, logout.',
+    'Browser checks passed: 3D rendering, orbit, node click and proof, neighborhood, PNG, 2D switch, filters, layouts, zoom, relation click, timeline, whole-investigation view, common neighbours, search, discovery plan, mobile, WebGL fallback, logout.',
   );
 } catch (error) {
   console.log(
