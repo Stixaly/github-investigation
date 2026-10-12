@@ -4,6 +4,19 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; le pro
 
 ## [Non publié]
 
+### Ajouté
+
+- Profils de collecte versionnés et immuables, « Aperçu » et « Réseau » (migration 0005, [ADR 0006](docs/adr/0006-profils-et-listes-versionnes.md)) : relations lues, pages par endpoint et budget borné ; chaque scan garde son profil.
+- Lancement de 1 à 10 seeds à la fois (`POST /api/v1/investigations/{id}/scans/batch`), idempotent et tout ou rien.
+- Listes de termes versionnées par dossier (onglet « Termes ») : format `observatory.keyword-list` de la feuille de route, publication soumise aux tests intégrés, versions immuables, export réimportable, essai sur un exemple.
+- Moteur de règles à trois états (`match`, `no_match`, `not_evaluated`), avec normalisation Unicode et explications positionnées ; cible de fuzzing `rules`.
+- Commande `observatory metrics` : volumes, croissance, durées et réutilisation, en JSON ; octets reçus comptés dans `coverage.stats`.
+
+### Modifié
+
+- Dix scans au plus en attente ou actifs par dossier (trois auparavant).
+- L'exemple `docs/examples/keyword-list.example.json` est désormais importable.
+
 ## [0.3.0] — 2026-10-12
 
 Collecte plus économe et plus rapide, pivots à l'échelle du dossier. La montée depuis la 0.1 ou la 0.2 applique les migrations manquantes (0002 à 0004) ; répétée sur une copie restaurée de la base pilote, sans changement des données observées.

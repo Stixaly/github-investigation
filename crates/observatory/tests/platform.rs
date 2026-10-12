@@ -218,10 +218,13 @@ async fn idempotency_and_pending_budget() {
     assert_eq!(client.post(&url, other).await.0, StatusCode::CONFLICT);
     client.scan(&case, "github.com/alice/second").await;
     client.scan(&case, "https://github.com/alice").await;
+    let seeds: Vec<String> = (0..7).map(|index| format!("alice/batch-{index}")).collect();
+    let (status, batch) = client.post(&format!("{url}/batch"), json!({"seeds": seeds})).await;
+    assert_eq!((status, batch.as_array().map(Vec::len)), (StatusCode::ACCEPTED, Some(7)));
     let (status, error) = client.post(&url, json!({"seed": "another/repo"})).await;
     assert_eq!(
         (status, error["detail"].as_str()),
-        (StatusCode::TOO_MANY_REQUESTS, Some("Trois scans sont déjà en attente ou actifs"))
+        (StatusCode::TOO_MANY_REQUESTS, Some("Dix scans au plus en attente ou actifs par dossier"))
     );
 }
 

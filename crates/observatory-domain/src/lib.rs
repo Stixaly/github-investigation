@@ -6,6 +6,8 @@
 
 pub mod canonical;
 pub mod pagination;
+pub mod profile;
+pub mod rules;
 pub mod seed;
 pub mod snapshot;
 pub mod text;

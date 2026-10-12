@@ -34,6 +34,11 @@ pub struct Scan {
     pub error: Option<String>,
     pub import_key: Option<String>,
     pub idempotency_key: Uuid,
+    /// Profil de collecte du lancement ; absent pour les scans antérieurs à la 0.4.
+    pub profile_name: Option<String>,
+    pub profile_version: Option<i32>,
+    /// Copie des réglages du profil au lancement.
+    pub profile: Option<Value>,
 }
 
 /// États d'un scan encore susceptibles de consommer l'API GitHub.

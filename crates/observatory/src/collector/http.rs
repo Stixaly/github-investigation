@@ -80,11 +80,13 @@ pub struct Fetched {
     /// Secondes pendant lesquelles plus aucun scan ne doit interroger cette ressource.
     pub pause: Option<f64>,
     pub rate: Option<RateLimit>,
+    /// Octets de corps reçus.
+    pub bytes: usize,
 }
 
 impl Fetched {
     fn error(error: FetchError) -> Self {
-        Self { result: Err(error), pause: None, rate: None }
+        Self { result: Err(error), pause: None, rate: None, bytes: 0 }
     }
 }
 
@@ -185,6 +187,7 @@ impl GitHub {
                 Err(error) => return Fetched::error(transport(&error)),
             }
         }
+        let bytes = body.len();
         let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
         let rate = rate_limit(&headers);
         let mut pause = None;
@@ -192,18 +195,18 @@ impl GitHub {
             let delay = rate.as_ref().map_or(60.0, |rate| seconds_until(rate.reset).max(60.0));
             pause = Some(delay);
             if matches!(status, 403 | 429) {
-                return Fetched { result: Err(FetchError::RateLimited(delay)), pause, rate };
+                return Fetched { result: Err(FetchError::RateLimited(delay)), pause, rate, bytes };
             }
         }
         if status == 429 || (status == 403 && headers.contains_key("retry-after")) {
             let delay = header("retry-after").unwrap_or("60").parse::<f64>().unwrap_or(60.0);
-            return Fetched { result: Err(FetchError::RateLimited(delay)), pause: Some(delay), rate };
+            return Fetched { result: Err(FetchError::RateLimited(delay)), pause: Some(delay), rate, bytes };
         }
         if status == 304 {
-            return Fetched { result: Ok(Response::NotModified), pause, rate };
+            return Fetched { result: Ok(Response::NotModified), pause, rate, bytes };
         }
         if status != 200 {
-            return Fetched { result: Err(FetchError::Status(status)), pause, rate };
+            return Fetched { result: Err(FetchError::Status(status)), pause, rate, bytes };
         }
         let result = serde_json::from_slice(&body)
             .map(|payload| Response::Fresh {
@@ -212,7 +215,7 @@ impl GitHub {
                 etag: header("etag").map(str::to_owned),
             })
             .map_err(|_| FetchError::Json);
-        Fetched { result, pause, rate }
+        Fetched { result, pause, rate, bytes }
     }
 
     /// État de toutes les ressources de quota (`GET /rate_limit`, non décompté par GitHub).

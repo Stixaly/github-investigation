@@ -19,6 +19,7 @@ use std::time::Duration;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use observatory_domain::pagination::{ForbiddenLink, next_page};
+use observatory_domain::profile::CollectionSettings;
 use observatory_domain::{SeedKind, parse_seed};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -31,8 +32,6 @@ pub use self::http::{FetchError, Fetched, GitHub, Response};
 use crate::model::Scan;
 use crate::store::{Batch, EntityRef, Role, ingest_github};
 
-/// Pages lues au plus par endpoint dans un scan, reprises comprises.
-pub const MAX_PAGES: usize = 2;
 /// Éléments demandés par page, le maximum de l'API REST.
 pub const PER_PAGE: u32 = 100;
 /// Attente du budget partagé faite sur place plutôt qu'en remettant le scan en file.
@@ -152,6 +151,7 @@ struct Stats {
     not_modified: AtomicU64,
     cache_hits: AtomicU64,
     retries: AtomicU64,
+    bytes: AtomicU64,
 }
 
 impl Stats {
@@ -170,6 +170,7 @@ impl Stats {
             "not_modified": total("not_modified", &self.not_modified),
             "cache_hits": total("cache_hits", &self.cache_hits),
             "retries": total("retries", &self.retries),
+            "bytes": total("bytes", &self.bytes),
         })
     }
 }
@@ -228,12 +229,20 @@ pub struct Collector<'a> {
     github: &'a GitHub,
     scan: &'a Scan,
     settings: Settings,
+    /// Réglages du profil du scan ; ceux de la 0.3 pour un scan lancé sans profil.
+    profile: CollectionSettings,
     stats: Stats,
 }
 
 impl<'a> Collector<'a> {
     pub fn new(pool: &'a PgPool, github: &'a GitHub, scan: &'a Scan, settings: Settings) -> Self {
-        Self { pool, github, scan, settings, stats: Stats::default() }
+        let profile = scan
+            .profile
+            .as_ref()
+            .and_then(|value| serde_json::from_value::<CollectionSettings>(value.clone()).ok())
+            .filter(|profile| profile.validate().is_ok())
+            .unwrap_or_else(CollectionSettings::network);
+        Self { pool, github, scan, settings, profile, stats: Stats::default() }
     }
 
     /// Attend sur place une réservation proche ; une attente longue remet le scan en file.
@@ -292,6 +301,7 @@ impl<'a> Collector<'a> {
             self.reserve(resource).await?;
             let fetched = request().await;
             Stats::add(&self.stats.requests);
+            self.stats.bytes.fetch_add(u64::try_from(fetched.bytes).unwrap_or(u64::MAX), Ordering::Relaxed);
             let refund = self.github.authenticated() && matches!(fetched.result, Ok(Response::NotModified));
             if let Some(rate) = &fetched.rate {
                 budget::record_rate(self.pool, rate, refund).await?;
@@ -374,7 +384,7 @@ impl<'a> Collector<'a> {
         Ok(state)
     }
 
-    /// Lit les pages d'un endpoint jusqu'à `MAX_PAGES` au total, reprises comprises.
+    /// Lit les pages d'un endpoint jusqu'au plafond du profil, reprises comprises.
     ///
     /// Chaque page est enregistrée avec son point de reprise dans une seule
     /// transaction : `next` et `result` ne bougent qu'une fois la page acquise.
@@ -387,7 +397,7 @@ impl<'a> Collector<'a> {
         result: &mut Map<String, Value>,
     ) -> Result<(), CollectError> {
         while let Some(url) = next.clone() {
-            if count(result, "pages") >= MAX_PAGES as u64 {
+            if count(result, "pages") >= u64::from(self.profile.max_pages) {
                 return Ok(());
             }
             let page = self.get(&url).await?;
@@ -435,7 +445,7 @@ impl<'a> Collector<'a> {
     ) -> Result<(), CollectError> {
         let endpoint = format!("{}/graphql", self.github.base());
         while let Some(cursor) = next.clone() {
-            if count(result, "pages") >= MAX_PAGES as u64 {
+            if count(result, "pages") >= u64::from(self.profile.max_pages) {
                 return Ok(());
             }
             let variables =
@@ -547,7 +557,19 @@ impl<'a> Collector<'a> {
                 Some(format!("{base}/{owner}/{}/repos?type=owner&per_page={PER_PAGE}", seed.path)),
             )]
         };
+        let profile_name = self.scan.profile_name.as_deref().unwrap_or("reseau");
+        let mut wanted = Vec::new();
         for (role, url) in plan {
+            if self.profile.wants(role.as_str()) {
+                wanted.push((role, url));
+            } else {
+                let reason = format!("Hors du profil « {profile_name} »");
+                coverage.insert(role.as_str().into(), json!({"status": "not_requested", "reason": reason}));
+            }
+        }
+        let pages = self.profile.max_pages;
+        let plural = if pages > 1 { "s" } else { "" };
+        for (role, url) in wanted {
             let name = role.as_str();
             let checkpoint = checkpoints.remove(name);
             if checkpoint.as_ref().is_some_and(|checkpoint| checkpoint.done) {
@@ -578,13 +600,18 @@ impl<'a> Collector<'a> {
                 self.graphql_repositories(&seed.path, &mut next, &mut result).await
             };
             if outcome.is_ok() && result["status"] == "partial" {
-                result.insert("reason".into(), "Plafond de deux pages par endpoint atteint".into());
+                result.insert(
+                    "reason".into(),
+                    format!("Plafond de {pages} page{plural} par endpoint atteint").into(),
+                );
             }
             if role == Role::Events {
                 result.insert(
                     "reason".into(),
-                    "Flux partiel : au plus 300 événements / 30 jours, deux pages collectées au maximum"
-                        .into(),
+                    format!(
+                        "Flux partiel : au plus 300 événements / 30 jours, {pages} page{plural} collectée{plural} au maximum"
+                    )
+                    .into(),
                 );
             }
             let stop = match outcome {
@@ -668,7 +695,7 @@ mod tests {
         let previous = json!({"requests": 4, "not_modified": 2});
         assert_eq!(
             stats.merged(Some(&previous)),
-            json!({"requests": 5, "not_modified": 2, "cache_hits": 1, "retries": 0})
+            json!({"requests": 5, "not_modified": 2, "cache_hits": 1, "retries": 0, "bytes": 0})
         );
     }
 

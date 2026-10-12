@@ -97,7 +97,7 @@ async fn rescans_revalidate_with_etags_then_reuse_fresh_pages() {
     assert_eq!((second["status"].as_str(), second["requests_used"].as_i64()), (Some("succeeded"), Some(0)));
     assert_eq!(
         second["coverage"]["stats"],
-        json!({"requests": 5, "not_modified": 5, "cache_hits": 0, "retries": 0})
+        json!({"requests": 5, "not_modified": 5, "cache_hits": 0, "retries": 0, "bytes": 0})
     );
     let (_, graph) = client.get(&format!("/api/v1/scans/{}/graph", second["id"].as_str().unwrap())).await;
     assert_eq!(

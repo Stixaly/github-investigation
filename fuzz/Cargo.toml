@@ -42,3 +42,10 @@ path = "fuzz_targets/snapshot.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "rules"
+path = "fuzz_targets/rules.rs"
+test = false
+doc = false
+bench = false

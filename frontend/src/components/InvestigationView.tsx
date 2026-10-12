@@ -7,11 +7,13 @@ import type { Investigation, Scan } from '../types';
 import { ALL_SCANS } from '../types';
 import { AccessTab } from './AccessTab';
 import { ExplorationTab } from './ExplorationTab';
+import { KeywordsTab } from './KeywordsTab';
 import { NotesTab } from './NotesTab';
 import { TimelineTab } from './TimelineTab';
 
 const TABS = [
   ['graph', 'Exploration'],
+  ['keywords', 'Termes'],
   ['timeline', 'Scans & chronologie'],
   ['notes', 'Notes d’analyse'],
   ['access', 'Accès'],
@@ -85,14 +87,18 @@ export function InvestigationView({
           graph={graph}
           action={action}
           onScanCreated={(created) => {
-            setScans((rows) => [created, ...rows.filter((row) => row.id !== created.id)]);
-            setChosenScan(created.id);
+            const ids = new Set(created.map((row) => row.id));
+            setScans((rows) => [...created, ...rows.filter((row) => !ids.has(row.id))]);
+            if (created.length > 0) setChosenScan(created[0].id);
             void onInvestigationsChanged();
           }}
           onSelectScan={setChosenScan}
           onGraph={setGraph}
           onOpenInvestigation={onOpenInvestigation}
         />
+      )}
+      {tab === 'keywords' && (
+        <KeywordsTab investigationId={investigation.id} canWrite={canWrite} action={action} />
       )}
       {tab === 'timeline' && (
         <TimelineTab

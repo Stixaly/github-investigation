@@ -4,6 +4,7 @@ mod auth;
 mod extract;
 mod graph;
 mod investigations;
+mod keywords;
 mod scans;
 
 use std::net::SocketAddr;
@@ -50,6 +51,12 @@ pub fn router(state: AppState) -> Router {
             get(investigations::notes).post(investigations::add_note),
         )
         .route("/investigations/{investigation_id}/scans", get(scans::list).post(scans::create))
+        .route("/investigations/{investigation_id}/scans/batch", post(scans::create_batch))
+        .route("/profiles", get(scans::profiles))
+        .route("/investigations/{investigation_id}/keyword-lists", get(keywords::list).post(keywords::create))
+        .route("/keyword-lists/preview", post(keywords::preview))
+        .route("/keyword-lists/{list_id}/versions", post(keywords::publish_version))
+        .route("/keyword-lists/{list_id}/versions/{version}", get(keywords::version))
         .route("/investigations/{investigation_id}/graph", get(graph::investigation_graph))
         .route("/investigations/{investigation_id}/common", get(graph::common))
         .route("/search", get(graph::search))

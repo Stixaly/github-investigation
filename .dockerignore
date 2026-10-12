@@ -6,6 +6,8 @@
 !crates/**
 !migrations/
 !migrations/**
+!docs/examples/
+!docs/examples/**
 !frontend/
 !frontend/**
 frontend/node_modules
