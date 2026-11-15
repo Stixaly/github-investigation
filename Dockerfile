@@ -15,7 +15,7 @@ RUN npm run check
 FROM ui-deps AS ui
 RUN npm run build
 
-FROM rust:1.99.0-alpine3.24@sha256:0cce0a5e0e8ba67b455257a3a02a1d99005f382748789d6464460028810f1627 AS rust-base
+FROM rust:1.99.1-alpine3.24@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS rust-base
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
